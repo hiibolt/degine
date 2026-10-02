@@ -120,6 +120,7 @@ fn router(state: AppState) -> Router {
         )
         .route("/rules/{id}/graph", get(rules::rule_graph))
         .route("/labels", get(facts::list_labels).put(facts::put_labels))
+        .route("/labels/{id}", axum::routing::delete(facts::delete_label))
         .route(
             "/asserts",
             get(asserts::list_asserts).post(asserts::create_assert),

@@ -173,6 +173,26 @@ pub(super) async fn list_labels(
     ))
 }
 
+pub(super) async fn delete_label(
+    State(state): State<AppState>,
+    Authed { id: user_id, email: _username }: Authed,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    require_owner(&state, &user_id)?;
+    require_id(&id)?;
+    match state.db.delete_label(&id) {
+        Ok(Some(())) => {
+            publish(&state, ServerEvent::AccessChanged);
+            Ok(StatusCode::NO_CONTENT)
+        }
+        Ok(None) => Err(AppError::not_found()),
+        Err(err) if err.to_string() == "in use" => {
+            Err(AppError::conflict("that label is still used in a formula"))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
 pub(super) async fn put_labels(
     State(state): State<AppState>,
     Authed { id: user_id, email: _username }: Authed,

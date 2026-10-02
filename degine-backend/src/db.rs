@@ -270,6 +270,24 @@ impl Db {
         })
     }
 
+    pub fn delete_label(&self, id: &str) -> Result<Option<()>> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let found = conn
+                .query_opt("SELECT id FROM labels WHERE id = $1", &[&id])
+                .with_context(|| format!("failed to read label `{id}`"))?;
+            if found.is_none() {
+                return Ok(None);
+            }
+            if label_in_use(&mut conn, id)? {
+                anyhow::bail!("in use");
+            }
+            conn.execute("DELETE FROM labels WHERE id = $1", &[&id])
+                .with_context(|| format!("failed to delete label `{id}`"))?;
+            Ok(Some(()))
+        })
+    }
+
     pub fn upsert_labels(&self, labels: &std::collections::BTreeMap<String, String>) -> Result<()> {
         self.hop(|db| {
             let mut conn = db.lock()?;
@@ -940,6 +958,49 @@ fn mint_token(user_id: &str) -> String {
     let _ = std::fs::File::open("/dev/urandom").and_then(|mut file| file.read_exact(&mut bytes));
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("dg1.{user_id}.{hex}")
+}
+
+fn label_in_use(conn: &mut Client, id: &str) -> Result<bool> {
+    let facts = conn.query("SELECT formula FROM facts WHERE formula IS NOT NULL", &[])?;
+    for row in facts {
+        let formula: String = row.get(0);
+        if mentions_atom(&formula, id) {
+            return Ok(true);
+        }
+    }
+    let asserts = conn.query("SELECT formula FROM asserts", &[])?;
+    for row in asserts {
+        let formula: String = row.get(0);
+        if mentions_atom(&formula, id) {
+            return Ok(true);
+        }
+    }
+    let rules = conn.query("SELECT conclusion FROM rules", &[])?;
+    for row in rules {
+        let conclusion: String = row.get(0);
+        if mentions_atom(&conclusion, id) {
+            return Ok(true);
+        }
+    }
+    let premises = conn.query("SELECT premise_id FROM rule_premises WHERE premise_id = $1", &[&id])?;
+    Ok(!premises.is_empty())
+}
+
+fn mentions_atom(formula: &str, id: &str) -> bool {
+    let needle = format!("fact:{id}");
+    let mut rest = formula;
+    while let Some(at) = rest.find(&needle) {
+        let after = at + needle.len();
+        let boundary = rest[after..].chars().next();
+        if boundary
+            .map(|ch| !ch.is_ascii_alphanumeric() && ch != '_')
+            .unwrap_or(true)
+        {
+            return true;
+        }
+        rest = &rest[after..];
+    }
+    false
 }
 
 fn fresh_id(tx: &mut Transaction<'_>, base: &str) -> Result<String> {

@@ -17,7 +17,7 @@ degine METHOD PATH [JSON]
   post   /facts  /asserts  /comments  /labels  /facts/{{id}}/derive
   post   /asserts/{{id}}/share  /comments/{{id}}/resolved  /account/token
   put    /facts/{{id}}  /asserts/{{id}}  /comments/{{id}}  /labels
-  delete /facts/{{id}}  /asserts/{{id}}  /comments/{{id}}  /asserts/{{id}}/share/{{email}}
+  delete /facts/{{id}}  /labels/{{id}}  /asserts/{{id}}  /comments/{{id}}  /asserts/{{id}}/share/{{email}}
 
   a body can be a JSON argument or stdin."
         );
