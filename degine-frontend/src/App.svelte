@@ -29,6 +29,7 @@
   let selected = $state(null);
   let drafting = $state(null);
   let error = $state("");
+  let loading = $state(false);
   let live = $state("off");
   let busy = $state(false);
   let owner = $state(false);
@@ -230,6 +231,8 @@
   }
 
   async function loadAll(current) {
+    loading = true;
+    try {
     const me = await api("/me", { token: current });
     owner = me.owner;
     const [nextFacts, nextRules, nextAsserts, nextLabels, nextInbox] = await Promise.all([
@@ -251,6 +254,9 @@
     );
     graphs = Object.fromEntries(loaded);
     if (selected) await loadThreads(current, selected.kind, selected.id);
+    } finally {
+      loading = false;
+    }
   }
 
   async function loadThreads(current, kind, id) {
@@ -613,6 +619,10 @@
     </header>
     <Toast />
     {#if error}<p class="banner">{error}</p>{/if}
+    {#if loading && facts.length === 0}
+      <p class="loading">loading</p>
+    {:else}
+    <div class="arrive">
     {#if tab === "outcomes"}
       <Outcomes
         {facts}
@@ -683,6 +693,8 @@
         choose("assert", id);
       }}
     />
+    {/if}
+    </div>
     {/if}
   </main>
 {/if}

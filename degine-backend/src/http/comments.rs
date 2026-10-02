@@ -25,7 +25,7 @@ pub(super) async fn list_comments(
     if target_id.is_empty() {
         return Err(AppError::bad_request("target_id is required"));
     }
-    ensure_comment_target(&state, &username, &query.target_type, target_id)?;
+    ensure_comment_target(&state, &user_id, &username, &query.target_type, target_id)?;
     Ok(Json(state.db.list_comments(&query.target_type, target_id)?))
 }
 
@@ -43,7 +43,7 @@ pub(super) async fn create_comment(
 ) -> Result<impl IntoResponse, AppError> {
     let target_id = clean_text(&body.target_id, "target_id")?;
     let text = clean_text(&body.body, "body")?;
-    ensure_comment_target(&state, &author, &body.target_type, &target_id)?;
+    ensure_comment_target(&state, &user_id, &author, &body.target_type, &target_id)?;
     let comment = state
         .db
         .insert_comment(&body.target_type, &target_id, &author, &text)?;
@@ -145,7 +145,7 @@ pub(super) async fn inbox(
         if comment.author == username {
             continue;
         }
-        if can_see(&state, &username, &comment.target_type, &comment.target_id)? {
+        if can_see(&state, &user_id, &username, &comment.target_type, &comment.target_id)? {
             visible.push(comment);
         }
     }
@@ -154,6 +154,7 @@ pub(super) async fn inbox(
 
 fn ensure_comment_target(
     state: &AppState,
+    user_id: &str,
     username: &str,
     target_type: &str,
     target_id: &str,
@@ -172,7 +173,7 @@ fn ensure_comment_target(
         "rule" | "conclusion" => state.db.rule(target_id)?.is_some(),
         _ => false,
     };
-    if !exists || !can_see(state, username, target_type, target_id)? {
+    if !exists || !can_see(state, user_id, username, target_type, target_id)? {
         return Err(AppError::not_found());
     }
     Ok(())

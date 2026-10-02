@@ -124,7 +124,7 @@ pub(super) async fn assert_graph(
     Authed { id: user_id, email: username }: Authed,
     Path(id): Path<String>,
 ) -> Result<Json<GraphBody>, AppError> {
-    if state.db.get_assert(&id)?.is_none() || !can_see(&state, &username, "assert", &id)? {
+    if state.db.get_assert(&id)?.is_none() || !can_see(&state, &user_id, &username, "assert", &id)? {
         return Err(AppError::not_found());
     }
     Ok(Json(graph_body(state.db.assert_graph(&id)?)))

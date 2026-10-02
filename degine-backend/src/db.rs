@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::{Context, Result};
@@ -11,7 +12,8 @@ use crate::model::{Assert, Comment, Fact, Rule};
 
 #[derive(Clone)]
 pub struct Db {
-    inner: Arc<Mutex<Client>>,
+    slots: Arc<Vec<Mutex<Client>>>,
+    next: Arc<AtomicUsize>,
     owner: Arc<Mutex<Option<String>>>,
 }
 
@@ -42,9 +44,15 @@ impl Db {
             .with_root_certificates(roots)
             .with_no_client_auth();
         let connector = MakeRustlsConnect::new(config);
-        let client = Client::connect(url, connector).context("failed to open the database")?;
+        let mut slots = Vec::new();
+        for _ in 0..4 {
+            slots.push(Mutex::new(
+                Client::connect(url, connector.clone()).context("failed to open the database")?,
+            ));
+        }
         Ok(Self {
-            inner: Arc::new(Mutex::new(client)),
+            slots: Arc::new(slots),
+            next: Arc::new(AtomicUsize::new(0)),
             owner: Arc::new(Mutex::new(None)),
         })
     }
@@ -70,7 +78,8 @@ impl Db {
     }
 
     fn lock(&self) -> Result<MutexGuard<'_, Client>> {
-        self.inner
+        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.slots.len();
+        self.slots[index]
             .lock()
             .map_err(|_| anyhow::anyhow!("database lock poisoned"))
     }

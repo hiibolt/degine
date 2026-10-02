@@ -269,11 +269,12 @@ fn require_owner(state: &AppState, email: &str) -> Result<(), AppError> {
 
 fn can_see(
     state: &AppState,
+    user_id: &str,
     username: &str,
     target_type: &str,
     target_id: &str,
 ) -> Result<bool, AppError> {
-    if is_owner(state, username)? {
+    if is_owner(state, user_id)? {
         return Ok(true);
     }
     let grant = grant_for(&state.db, username)?;
