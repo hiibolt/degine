@@ -91,7 +91,7 @@
     {#if owner}
       <form class="stack add-fact" onsubmit={addFact}>
         <p class="kicker">new personal fact</p>
-        <label>wording, use {'{name}'} <input bind:value={claim} placeholder="{'{name}'} uses drugs" /></label>
+        <label>wording, use {'{name}'} <input bind:value={claim} placeholder="{'{name}'} does X" /></label>
         <button class="primary" type="submit">add fact</button>
       </form>
     {/if}

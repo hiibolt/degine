@@ -297,6 +297,13 @@ h2 {
   margin-top: 0.85rem;
 }
 
+.rail > h2,
+.rail > .kicker,
+.rail > .spread,
+.group > .spread {
+  margin-bottom: 0.65rem;
+}
+
 .stack {
   display: grid;
   gap: 0.55rem;

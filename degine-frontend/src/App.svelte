@@ -604,6 +604,10 @@
   }
 
   async function exportAssert(item) {
+    const person = personFor(item.id);
+    const cached = personViews[item.id];
+    const record = person && cached?.personId === person ? cached.view : graphs[item.id];
+    if (record?.status !== "proved") return;
     busy = true;
     error = "";
     try {
@@ -620,7 +624,7 @@
           assert: item,
           facts,
           labels,
-          record: graphs[item.id],
+          record,
           comments: threads.flat(),
         }),
       );

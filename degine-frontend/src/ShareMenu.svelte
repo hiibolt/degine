@@ -1,7 +1,7 @@
 <script>
   import Icon from "./Icon.svelte";
 
-  let { owner, shares = [], onexport, ontoggle, onload } = $props();
+  let { owner, shares = [], canExport = false, onexport, ontoggle, onload } = $props();
 
   let open = $state(false);
   let email = $state("");
@@ -26,7 +26,9 @@
   </button>
   {#if open}
     <div class="menu">
-      <button class="quiet" type="button" onclick={onexport}>export</button>
+      {#if canExport}
+        <button class="quiet" type="button" onclick={onexport}>export</button>
+      {/if}
       {#if owner}
         <form class="share-add" onsubmit={add}>
           <input bind:value={email} type="email" placeholder="email" autocomplete="off" />

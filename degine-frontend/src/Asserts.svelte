@@ -334,6 +334,7 @@
             <ShareMenu
               {owner}
               {shares}
+              canExport={status === "proved"}
               onexport={() => onexport(open)}
               onload={() => onshares(open.id)}
               ontoggle={(person, on) => ontoggleShare(open.id, person, on)}
