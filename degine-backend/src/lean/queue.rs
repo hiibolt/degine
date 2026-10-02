@@ -47,10 +47,17 @@ impl LeanQueue {
         tokio::spawn(async move {
             while let Some(work) = rx.recv().await {
                 let target = work.job.target_rule_id.clone();
-                let _ = events_worker.send(LeanEvent::CompileStarted {
-                    target_rule_id: target.clone(),
-                });
+                let ephemeral = work.job.ephemeral;
+                if !ephemeral {
+                    let _ = events_worker.send(LeanEvent::CompileStarted {
+                        target_rule_id: target.clone(),
+                    });
+                }
                 let result = bridge::compile_and_extract(&config, &work.job).await;
+                if ephemeral {
+                    let _ = work.reply.send(result);
+                    continue;
+                }
                 match &result {
                     Ok(LeanOutcome::Proved { graph }) => {
                         let _ = events_worker.send(LeanEvent::GraphUpdated {

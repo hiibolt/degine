@@ -6,8 +6,11 @@
 mod bridge;
 mod codegen;
 mod formula;
+mod gaps;
 mod prove;
 mod queue;
+
+pub use gaps::missing;
 
 pub use bridge::{DepEdge, DepGraph, DepNode, LeanOutcome};
 pub use codegen::{fact_decl_name, rule_decl_name};

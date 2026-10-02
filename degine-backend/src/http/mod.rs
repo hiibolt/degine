@@ -2,6 +2,7 @@ mod asserts;
 mod comments;
 mod facts;
 mod live;
+mod people;
 mod rules;
 mod shares;
 
@@ -130,6 +131,21 @@ fn router(state: AppState) -> Router {
             put(asserts::update_assert).delete(asserts::delete_assert),
         )
         .route("/asserts/{id}/graph", get(asserts::assert_graph))
+        .route("/asserts/{id}/for/{person}", get(people::check_person))
+        .route("/people", get(people::list_people).post(people::create_person))
+        .route("/people/{id}", axum::routing::delete(people::delete_person))
+        .route(
+            "/personal-facts",
+            get(people::list_personal).post(people::create_personal),
+        )
+        .route(
+            "/personal-facts/{id}",
+            axum::routing::delete(people::delete_personal),
+        )
+        .route(
+            "/people/{person}/toggles/{fact}",
+            put(people::toggle),
+        )
         .route("/asserts/{id}/shares", get(shares::list_shares))
         .route("/asserts/{id}/share", post(shares::grant_share))
         .route(
@@ -214,6 +230,7 @@ fn enqueue_debate(state: &AppState) -> Result<()> {
             facts: facts.clone(),
             rules: rules.clone(),
             target_rule_id: rule.id.clone(),
+            ephemeral: false,
         };
         let queue = state.queue.clone();
         tokio::spawn(async move {
@@ -259,6 +276,7 @@ fn assert_job(assert: &Assert, facts: &[Fact], rules: &[Rule]) -> JobRequest {
         facts: facts.to_vec(),
         rules,
         target_rule_id: assert.id.clone(),
+        ephemeral: false,
     }
 }
 

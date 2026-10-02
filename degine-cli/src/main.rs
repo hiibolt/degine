@@ -11,7 +11,8 @@ degine METHOD PATH [JSON]
   DEGINE_TOKEN  dg1.<user id>.<secret>   from the account dialog
   DEGINE_URL    default https://degine.hiibolt.com
 
-  get    /me  /facts  /rules  /labels  /asserts  /inbox
+  get    /me  /facts  /rules  /labels  /asserts  /inbox  /people  /personal-facts
+  get    /asserts/{{id}}/for/{{person}}
   get    /facts  /asserts/{{id}}/graph  /asserts/{{id}}/shares
   get    /comments?target_type=fact&target_id={{id}}
   post   /facts  /asserts  /comments  /labels  /facts/{{id}}/derive

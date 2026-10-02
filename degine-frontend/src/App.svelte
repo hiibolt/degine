@@ -8,6 +8,7 @@
   import Inbox from "./Inbox.svelte";
   import Library from "./Library.svelte";
   import Outcomes from "./Outcomes.svelte";
+  import People from "./People.svelte";
   import Toast from "./Toast.svelte";
 
   let authMode = $state("in");
@@ -37,6 +38,10 @@
   let owner = $state(false);
   let inbox = $state([]);
   let shares = $state([]);
+  let people = $state([]);
+  let personal = $state([]);
+  let personId = $state("");
+  let personView = $state(null);
 
   const configured = Boolean(supabase);
 
@@ -263,6 +268,12 @@
     }
   }
 
+  async function checkPerson(assertId, person) {
+    personView = await api(`/asserts/${encodeURIComponent(assertId)}/for/${encodeURIComponent(person)}`, {
+      token,
+    });
+  }
+
   async function loadAll(current) {
     loading = true;
     try {
@@ -286,6 +297,9 @@
       ),
     );
     graphs = Object.fromEntries(loaded);
+    people = await api("/people", { token: current });
+    personal = await api("/personal-facts", { token: current });
+    if (personId && selected?.kind === "assert") await checkPerson(selected.id, personId);
     if (selected) await loadThreads(current, selected.kind, selected.id);
     } finally {
       loading = false;
@@ -343,6 +357,7 @@
           graphs = { ...graphs, [id]: record };
         })
         .catch(handleError);
+      if (personId) checkPerson(id, personId).catch(handleError);
       return;
     }
     if (kind === "rule") {
@@ -637,6 +652,9 @@
           <button class="tab" class:on={tab === "outcomes"} type="button" onclick={() => (tab = "outcomes")}>
             outcomes
           </button>
+          <button class="tab" class:on={tab === "people"} type="button" onclick={() => (tab = "people")}>
+            people
+          </button>
         </nav>
       </div>
       <div class="hint session">
@@ -696,9 +714,48 @@
         onexport={exportAssert}
         onshares={loadShares}
         ontoggleShare={toggleShare}
+        {people}
+        {personId}
+        {personView}
+        onperson={async (id) => {
+          personId = id;
+          personView = null;
+          if (id && selected?.kind === "assert") await checkPerson(selected.id, id);
+        }}
         onopenFact={(id) => {
           tab = "library";
           choose("fact", id);
+        }}
+      />
+    {:else if tab === "people"}
+      <People
+        {people}
+        {personal}
+        {owner}
+        onerror={handleError}
+        onaddPerson={async (body) => {
+          await api("/people", { token, method: "POST", body });
+          await loadAll(token);
+        }}
+        onremovePerson={async (id) => {
+          await api(`/people/${encodeURIComponent(id)}`, { token, method: "DELETE" });
+          if (personId === id) {
+            personId = "";
+            personView = null;
+          }
+          await loadAll(token);
+        }}
+        onaddFact={async (body) => {
+          await api("/personal-facts", { token, method: "POST", body });
+          await loadAll(token);
+        }}
+        ontoggle={async (person, fact, on) => {
+          await api(`/people/${encodeURIComponent(person)}/toggles/${encodeURIComponent(fact)}`, {
+            token,
+            method: "PUT",
+            body: { on },
+          });
+          await loadAll(token);
         }}
       />
     {:else}

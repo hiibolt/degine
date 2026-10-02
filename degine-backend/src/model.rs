@@ -56,10 +56,25 @@ pub struct Comment {
     pub resolved: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    pub on: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalFact {
+    pub id: String,
+    pub claim: String,
+}
+
 /// One snapshot of a debate, checked as a single Lean job.
 #[derive(Debug, Clone)]
 pub struct JobRequest {
     pub facts: Vec<Fact>,
     pub rules: Vec<Rule>,
     pub target_rule_id: String,
+    /// A person-scoped check. Its result is not saved over the assert graph.
+    pub ephemeral: bool,
 }

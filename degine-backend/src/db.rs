@@ -9,7 +9,7 @@ use rustls::RootCertStore;
 use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::lean::DepGraph;
-use crate::model::{Assert, Comment, Fact, Rule};
+use crate::model::{Assert, Comment, Fact, Person, PersonalFact, Rule};
 
 #[derive(Clone)]
 pub struct Db {
@@ -52,11 +52,36 @@ impl Db {
                 Client::connect(url, connector.clone()).context("failed to open the database")?,
             ));
         }
-        Ok(Self {
+        let db = Self {
             slots: Arc::new(slots),
             next: Arc::new(AtomicUsize::new(0)),
             owner: Arc::new(Mutex::new(None)),
             emails: Arc::new(Mutex::new(HashMap::new())),
+        };
+        db.ensure_people()?;
+        Ok(db)
+    }
+
+    fn ensure_people(&self) -> Result<()> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            conn.batch_execute(
+                "CREATE TABLE IF NOT EXISTS people (
+                    id text PRIMARY KEY,
+                    name text NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS personal_facts (
+                    id text PRIMARY KEY,
+                    claim text NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS person_toggles (
+                    person_id text NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+                    fact_id text NOT NULL REFERENCES personal_facts(id) ON DELETE CASCADE,
+                    PRIMARY KEY (person_id, fact_id)
+                );",
+            )
+            .context("failed to prepare people tables")?;
+            Ok(())
         })
     }
 
@@ -285,6 +310,104 @@ impl Db {
             conn.execute("DELETE FROM labels WHERE id = $1", &[&id])
                 .with_context(|| format!("failed to delete label `{id}`"))?;
             Ok(Some(()))
+        })
+    }
+
+    pub fn list_people(&self) -> Result<Vec<Person>> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let rows = conn.query("SELECT id, name FROM people ORDER BY name", &[])?;
+            let toggles = conn.query("SELECT person_id, fact_id FROM person_toggles", &[])?;
+            let mut on: HashMap<String, Vec<String>> = HashMap::new();
+            for row in toggles {
+                on.entry(row.get(0)).or_default().push(row.get(1));
+            }
+            Ok(rows
+                .into_iter()
+                .map(|row| {
+                    let id: String = row.get(0);
+                    Person {
+                        on: on.remove(&id).unwrap_or_default(),
+                        id,
+                        name: row.get(1),
+                    }
+                })
+                .collect())
+        })
+    }
+
+    pub fn insert_person(&self, id: &str, name: &str) -> Result<()> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            conn.execute("INSERT INTO people (id, name) VALUES ($1, $2)", &[&id, &name])
+                .context("failed to add a person")?;
+            Ok(())
+        })
+    }
+
+    pub fn delete_person(&self, id: &str) -> Result<bool> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let n = conn
+                .execute("DELETE FROM people WHERE id = $1", &[&id])
+                .context("failed to delete a person")?;
+            Ok(n > 0)
+        })
+    }
+
+    pub fn list_personal_facts(&self) -> Result<Vec<PersonalFact>> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let rows = conn.query("SELECT id, claim FROM personal_facts ORDER BY claim", &[])?;
+            Ok(rows
+                .into_iter()
+                .map(|row| PersonalFact {
+                    id: row.get(0),
+                    claim: row.get(1),
+                })
+                .collect())
+        })
+    }
+
+    pub fn insert_personal_fact(&self, id: &str, claim: &str) -> Result<()> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            conn.execute(
+                "INSERT INTO personal_facts (id, claim) VALUES ($1, $2)",
+                &[&id, &claim],
+            )
+            .context("failed to add a personal fact")?;
+            Ok(())
+        })
+    }
+
+    pub fn delete_personal_fact(&self, id: &str) -> Result<bool> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let n = conn
+                .execute("DELETE FROM personal_facts WHERE id = $1", &[&id])
+                .context("failed to delete a personal fact")?;
+            Ok(n > 0)
+        })
+    }
+
+    pub fn set_toggle(&self, person: &str, fact: &str, on: bool) -> Result<()> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            if on {
+                conn.execute(
+                    "INSERT INTO person_toggles (person_id, fact_id) VALUES ($1, $2)
+                     ON CONFLICT DO NOTHING",
+                    &[&person, &fact],
+                )
+            } else {
+                conn.execute(
+                    "DELETE FROM person_toggles WHERE person_id = $1 AND fact_id = $2",
+                    &[&person, &fact],
+                )
+            }
+            .context("failed to set a personal fact")?;
+            Ok(())
         })
     }
 

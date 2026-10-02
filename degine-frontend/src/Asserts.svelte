@@ -35,6 +35,10 @@
     onexport,
     onshares,
     ontoggleShare,
+    people = [],
+    personId = "",
+    personView = null,
+    onperson,
   } = $props();
 
   let title = $state("");
@@ -57,7 +61,7 @@
   }
 
   function nameOf(id) {
-    return facts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
+    return viewFacts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
   }
 
   function linesOf(items) {
@@ -67,11 +71,15 @@
   const open = $derived(
     !drafting && selected?.kind === "assert" ? asserts.find((item) => item.id === selected.id) : null,
   );
-  const record = $derived(open ? graphs[open.id] : null);
+  const personName = $derived(people.find((item) => item.id === personId)?.name || "");
+  const record = $derived(personId && personView ? personView : open ? graphs[open.id] : null);
+  const viewFacts = $derived(
+    personView?.facts?.length ? [...facts.filter((fact) => !personView.facts.some((item) => item.id === fact.id)), ...personView.facts] : facts,
+  );
   const status = $derived(record?.status || (open ? "pending" : ""));
   const titleOf = (id) => nameOf(id);
   const tree = $derived(
-    open ? explainAssert(open.formula, facts, titleOf, record?.status === "proved" ? record.graph : null) : null,
+    open ? explainAssert(open.formula, viewFacts, titleOf, record?.status === "proved" ? record.graph : null) : null,
   );
   const shown = $derived(open?.formula ? readClaim(open.formula) : null);
   const options = $derived(atomChoices(facts, labels));
@@ -272,7 +280,18 @@
           {/if}
         </div>
       </div>
-      <h2 class="item-title">{open.title}</h2>
+      <h2 class="item-title">{personName ? open.title.replaceAll("{name}", personName) : open.title}</h2>
+      {#if people.length}
+        <label class="person-pick">
+          person
+          <select value={personId} onchange={(event) => onperson(event.currentTarget.value)}>
+            <option value="">library, no person</option>
+            {#each people as item (item.id)}
+              <option value={item.id}>{item.name}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       {#if open.description}
         <p class="dek">{open.description}</p>
       {/if}
@@ -287,6 +306,9 @@
         </div>
       {/if}
     </div>
+      {#if personView?.missing?.length}
+        <p class="missing">To make this hold, turn on: {personView.missing.map((item) => item.claim).join(", ")}.</p>
+      {/if}
       {#if record?.diagnostics}
         <pre class="diagnostic">{shortDiagnostic(record.diagnostics)}</pre>
       {/if}
