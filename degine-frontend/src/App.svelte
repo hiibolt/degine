@@ -42,6 +42,26 @@
   let personal = $state([]);
   let personId = $state("");
   let personView = $state(null);
+  let personViews = $state({});
+  let assertPeople = $state(readAssertPeople());
+
+  function readAssertPeople() {
+    try {
+      const saved = JSON.parse(localStorage.getItem("degine.assertPeople") || "{}");
+      return saved && typeof saved === "object" ? saved : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function personFor(assertId) {
+    return assertPeople[assertId] || "";
+  }
+
+  function saveAssertPerson(assertId, person) {
+    assertPeople = { ...assertPeople, [assertId]: person };
+    localStorage.setItem("degine.assertPeople", JSON.stringify(assertPeople));
+  }
 
   const configured = Boolean(supabase);
 
@@ -268,10 +288,37 @@
     }
   }
 
+  function inputsOf(assertId, personId) {
+    const assert = asserts.find((item) => item.id === assertId);
+    const person = people.find((item) => item.id === personId);
+    return JSON.stringify({
+      formula: assert?.formula || "",
+      assumes: [...(assert?.assumes || [])].sort(),
+      on: [...(person?.on || [])].sort(),
+      facts: facts.map((fact) => `${fact.id}|${fact.role}|${fact.formula || ""}|${fact.claim}`).sort(),
+      personal: personal.map((item) => `${item.id}|${item.claim}`).sort(),
+    });
+  }
+
   async function checkPerson(assertId, person) {
-    personView = await api(`/asserts/${encodeURIComponent(assertId)}/for/${encodeURIComponent(person)}`, {
+    const fp = inputsOf(assertId, person);
+    const prev = personViews[assertId];
+    const fresh = prev?.personId === person && prev.fp === fp;
+    const showing = selected?.kind === "assert" && selected.id === assertId;
+    if (fresh) {
+      if (showing) personView = prev.view;
+      return;
+    }
+    if (showing) {
+      personView = { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
+    }
+    const view = await api(`/asserts/${encodeURIComponent(assertId)}/for/${encodeURIComponent(person)}`, {
       token,
     });
+    personViews = { ...personViews, [assertId]: { personId: person, fp, view } };
+    if (selected?.kind === "assert" && selected.id === assertId && personFor(assertId) === person) {
+      personView = view;
+    }
   }
 
   async function loadAll(current) {
@@ -299,7 +346,12 @@
     graphs = Object.fromEntries(loaded);
     people = await api("/people", { token: current });
     personal = await api("/personal-facts", { token: current });
-    if (personId && selected?.kind === "assert") await checkPerson(selected.id, personId);
+    await Promise.all(
+      nextAsserts.map(async (item) => {
+        const person = assertPeople[item.id];
+        if (person) await checkPerson(item.id, person);
+      }),
+    );
     if (selected) await loadThreads(current, selected.kind, selected.id);
     } finally {
       loading = false;
@@ -352,12 +404,23 @@
     loadThreads(token, kind, id).catch(handleError);
     if (kind === "assert") {
       shares = [];
+      const person = personFor(id);
+      if (person) {
+        const hit = personViews[id];
+        const fp = inputsOf(id, person);
+        personView =
+          hit?.personId === person && hit.fp === fp
+            ? hit.view
+            : { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
+      } else {
+        personView = null;
+      }
       api(`/asserts/${encodeURIComponent(id)}/graph`, { token })
         .then((record) => {
           graphs = { ...graphs, [id]: record };
         })
         .catch(handleError);
-      if (personId) checkPerson(id, personId).catch(handleError);
+      if (person) checkPerson(id, person).catch(handleError);
       return;
     }
     if (kind === "rule") {
@@ -444,14 +507,24 @@
       title: payload.title,
       description: payload.description,
       formula: payload.formula,
+      assumes: payload.assumes || [],
     };
     if (existingId) {
+      graphs = {
+        ...graphs,
+        [existingId]: { status: "pending", graph: null, diagnostics: null },
+      };
+      if (personFor(existingId)) {
+        personView = { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
+      }
       const item = await api(`/asserts/${encodeURIComponent(existingId)}`, {
         method: "PUT",
         token,
         body,
       });
       apply({ type: "assert_changed", assert: item });
+      const person = personFor(existingId);
+      if (person) await checkPerson(existingId, person);
       return;
     }
     if (!payload.id) throw new Error("give the title a letter or a number");
@@ -679,6 +752,13 @@
         {facts}
         {labels}
         {asserts}
+        {personal}
+        {people}
+        {personId}
+        onperson={(id) => {
+          personId = id;
+          personView = null;
+        }}
         {owner}
         onimport={async (payload) => {
           await saveAssert(payload);
@@ -715,12 +795,15 @@
         onshares={loadShares}
         ontoggleShare={toggleShare}
         {people}
-        {personId}
+        {assertPeople}
+        personId={selected?.kind === "assert" ? personFor(selected.id) : ""}
+        {personViews}
         {personView}
         onperson={async (id) => {
-          personId = id;
+          if (selected?.kind !== "assert") return;
+          saveAssertPerson(selected.id, id);
           personView = null;
-          if (id && selected?.kind === "assert") await checkPerson(selected.id, id);
+          if (id) await checkPerson(selected.id, id);
         }}
         onopenFact={(id) => {
           tab = "library";

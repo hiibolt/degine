@@ -1,22 +1,53 @@
 <script>
-  import { compileClaim, readClaim, uniqueSlug } from "./phrases.js";
+  import { compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
   import { outcomeBoard } from "./outcomes.js";
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
   import ClaimView from "./ClaimView.svelte";
 
-  let { facts = [], labels = {}, asserts = [], owner = false, onimport, onopenFact } = $props();
+  let {
+    facts = [],
+    labels = {},
+    asserts = [],
+    personal = [],
+    people = [],
+    personId = "",
+    onperson = () => {},
+    owner = false,
+    onimport,
+    onopenFact,
+  } = $props();
 
   let picked = $state("");
   let openKey = $state("");
 
+  const person = $derived(people.find((item) => item.id === personId) || null);
+
+  const who = $derived(person?.name || "someone");
+
+  const scoped = $derived.by(() => {
+    const on = new Set(person?.on || []);
+    const extra = personal
+      .filter((item) => !person || on.has(item.id))
+      .map((item) => ({
+        id: item.id,
+        claim: fillName(item.claim, who),
+        role: person ? "fact" : "criterion",
+        formula: null,
+      }));
+    return [...facts, ...extra];
+  });
+
   function nameOf(id) {
-    return facts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
+    const raw = scoped.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
+    return fillName(raw, who);
   }
 
-  const board = $derived(outcomeBoard(facts, labels, nameOf));
+  const board = $derived(outcomeBoard(scoped, labels, nameOf));
   const ordered = $derived(
-    [...board].sort((a, b) => Number(needed(a.id)) - Number(needed(b.id))),
+    [...board].sort(
+      (a, b) => Number(needed(a.id)) - Number(needed(b.id)) || (a.sort || a.id).localeCompare(b.sort || b.id),
+    ),
   );
   const current = $derived(ordered.find((item) => item.id === picked) || ordered[0] || null);
 
@@ -65,6 +96,9 @@
       {#each ordered as item (item.id)}
         <button
           class="pick"
+          class:good={item.ways.some((way) => !way.assumes.length)}
+          class:bad={!item.ways.length}
+          class:open={item.ways.length > 0 && item.ways.every((way) => way.assumes.length)}
           class:selected={current?.id === item.id}
           type="button"
           onclick={() => {
@@ -80,12 +114,30 @@
 
   {#if current}
     <section class="detail">
-      <p class="kicker">outcome</p>
+      <div class="spread head-line">
+        <p class="kicker">outcome</p>
+        {#if people.length}
+          <div class="who" role="group" aria-label="whose facts to use">
+            <span>using</span>
+            <button type="button" class:on={!personId} onclick={() => onperson("")}>someone</button>
+            {#each people as item (item.id)}
+              <button type="button" class:on={personId === item.id} onclick={() => onperson(item.id)}>{item.name}</button>
+            {/each}
+          </div>
+        {/if}
+      </div>
       <h2 class="item-title">{current.title}</h2>
+      {#if !current.ways.length}
+        <p class="dek">Nothing reaches this.</p>
+      {/if}
       {#each current.ways as way (way.key)}
         <article class="combo">
           <div class="spread">
-            <ClaimView join="and" parts={way.shown.map(phrase)} thenTitle={{ title: current.title }} onopen={onopenFact} />
+            {#if way.assumes.length}
+              <ClaimView join="and" parts={way.shown.map(phrase)} thenTitle={{ title: current.title }} onopen={onopenFact} />
+            {:else}
+              <span class="seal proved">proved</span>
+            {/if}
             <div class="actions">
               <button
                 class="icon"

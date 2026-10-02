@@ -1,3 +1,12 @@
+export function fillName(text, who = "someone") {
+  const name = who || "someone";
+  const titled = name.slice(0, 1).toUpperCase() + name.slice(1);
+  return String(text ?? "").replace(/\{name\}/g, (_match, offset, all) => {
+    const before = all.slice(0, offset);
+    return offset === 0 || /[.!?]\s*$/.test(before) ? titled : name;
+  });
+}
+
 export function slug(title) {
   return title
     .trim()

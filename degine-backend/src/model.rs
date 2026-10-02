@@ -32,6 +32,9 @@ pub struct Assert {
     pub title: String,
     pub description: String,
     pub formula: String,
+    /// Criterion ids treated as given for this assert only.
+    #[serde(default)]
+    pub assumes: Vec<String>,
 }
 
 /// A derived step. `conclusion` is a formula, not prose.

@@ -324,16 +324,49 @@ h2 {
   background: #efe7db;
 }
 
+.pick.good {
+  background: #e4f0e2;
+}
+
+.pick.bad {
+  background: #f6e3de;
+}
+
+.pick.good:hover,
+.pick.good.selected {
+  background: #d3e6d0;
+}
+
+.pick.bad:hover,
+.pick.bad.selected {
+  background: #f0d0c9;
+}
+
+.pick.open {
+  background: #f3f7fb;
+}
+
+.pick.open:hover,
+.pick.open.selected {
+  background: #e8f0f7;
+}
+
 .item-title {
-  margin: 0.15rem 0 0.55rem;
+  margin: 0.15rem 0 1.15rem;
   font-size: 1.45rem;
   line-height: 1.2;
 }
 
 .dek {
-  margin: -0.2rem 0 0.75rem;
+  margin: 0 0 0.75rem;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.dek.reject {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .kicker {
@@ -548,16 +581,91 @@ button.chip {
 
 .toggles {
   list-style: none;
-  margin: 0.8rem 0 1.2rem;
+  margin: 0.2rem 0 1rem;
   padding: 0;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.15rem;
 }
 
-.toggles label {
+.fact-toggle {
   display: flex;
-  gap: 0.55rem;
+  flex-direction: row;
   align-items: flex-start;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0.42rem 0.5rem;
+  border-radius: 8px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.98rem;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.fact-toggle:hover {
+  background: #efe7db;
+}
+
+.fact-toggle input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--deep);
+}
+
+.add-person {
+  margin-top: 0.85rem;
+}
+
+.add-fact {
+  margin-top: auto;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.add-fact button,
+.add-person button {
+  justify-self: start;
+}
+
+.head-line {
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.head-line .item-title {
+  margin: 0;
+}
+
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.28rem;
+  margin: 0;
+}
+
+.who span {
+  margin-right: 0.15rem;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.who button {
+  background: transparent;
+  padding: 0.16rem 0.62rem;
+}
+
+.who button.on {
+  background: var(--deep);
+  color: #f6f3ec;
+  border-color: var(--deep);
 }
 
 .missing {

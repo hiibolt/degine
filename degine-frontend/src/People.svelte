@@ -1,4 +1,6 @@
 <script>
+  import { fillName } from "./phrases.js";
+
   let { people = [], personal = [], owner = false, onaddPerson, onremovePerson, onaddFact, ontoggle, onerror } =
     $props();
 
@@ -8,6 +10,8 @@
   let claim = $state("");
 
   const person = $derived(people.find((item) => item.id === personId) || people[0] || null);
+  const listedPeople = $derived([...people].sort((a, b) => a.name.localeCompare(b.name)));
+  const listedFacts = $derived([...personal].sort((a, b) => a.claim.localeCompare(b.claim)));
   const on = $derived(new Set(person?.on || []));
 
   function slug(value) {
@@ -41,16 +45,18 @@
   }
 </script>
 
-<div class="library">
+<div class="shell">
   <aside class="rail">
     <p class="kicker">people</p>
-    {#each people as item (item.id)}
-      <button class="row" class:selected={person?.id === item.id} type="button" onclick={() => (personId = item.id)}>
-        <span>{item.name}</span>
-      </button>
-    {/each}
+    <div class="list">
+      {#each listedPeople as item (item.id)}
+        <button class="pick" class:selected={person?.id === item.id} type="button" onclick={() => (personId = item.id)}>
+          {item.name}
+        </button>
+      {/each}
+    </div>
     {#if owner}
-      <form class="stack" onsubmit={addPerson}>
+      <form class="stack add-person" onsubmit={addPerson}>
         <label>name <input bind:value={name} placeholder="name" /></label>
         <button class="primary" type="submit">add person</button>
       </form>
@@ -64,18 +70,17 @@
           <button class="quiet" type="button" onclick={() => onremovePerson(person.id)}>remove</button>
         {/if}
       </div>
-      <p class="dek">Each line is one fact. On means it holds for {person.name}.</p>
       <ul class="toggles">
-        {#each personal as fact (fact.id)}
+        {#each listedFacts as fact (fact.id)}
           <li>
-            <label>
+            <label class="fact-toggle">
               <input
                 type="checkbox"
                 checked={on.has(fact.id)}
                 disabled={!owner}
                 onchange={(event) => ontoggle(person.id, fact.id, event.currentTarget.checked)}
               />
-              {fact.claim.replaceAll("{name}", person.name)}
+              <span>{fillName(fact.claim, person.name)}</span>
             </label>
           </li>
         {/each}
@@ -84,9 +89,9 @@
       <p class="dek">No people yet.</p>
     {/if}
     {#if owner}
-      <form class="stack" onsubmit={addFact}>
-        <p class="kicker">personal fact</p>
-        <label>wording <input bind:value={claim} placeholder="{'{name}'} uses drugs" /></label>
+      <form class="stack add-fact" onsubmit={addFact}>
+        <p class="kicker">new personal fact</p>
+        <label>wording, use {'{name}'} <input bind:value={claim} placeholder="{'{name}'} uses drugs" /></label>
         <button class="primary" type="submit">add fact</button>
       </form>
     {/if}

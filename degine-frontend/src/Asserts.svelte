@@ -6,9 +6,8 @@
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
   import ShareMenu from "./ShareMenu.svelte";
-  import { atomChoices, compileClaim, readClaim, uniqueSlug } from "./phrases.js";
+  import { atomChoices, compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
   import { explainAssert } from "./proof.js";
-  import { shortDiagnostic } from "./prose.js";
 
   let {
     asserts,
@@ -36,17 +35,23 @@
     onshares,
     ontoggleShare,
     people = [],
+    assertPeople = {},
     personId = "",
+    personViews = {},
     personView = null,
     onperson,
   } = $props();
 
   let title = $state("");
+  let outcomeId = $state("");
+  let enabled = $state([]);
+  let legacy = $state(false);
   let description = $state("");
   let join = $state("and");
   let parts = $state(["", ""]);
   let thenId = $state("");
   let editing = $state(false);
+  let logs = $state(false);
   let base = $state("");
   let query = $state("");
   let searching = $state(false);
@@ -60,8 +65,22 @@
     return `if ${left}, then ${nameOf(claim.thenId)}`;
   }
 
+  function assertState(assert) {
+    const person = assertPeople[assert.id];
+    const cached = personViews[assert.id];
+    if (person && cached?.personId === person) return cached.view.status;
+    if (person) return "pending";
+    return graphs[assert.id]?.status || "pending";
+  }
+
+  function assertTitle(assert) {
+    const saved = people.find((item) => item.id === assertPeople[assert.id])?.name || "someone";
+    return fillName(assert.title, saved);
+  }
+
   function nameOf(id) {
-    return viewFacts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
+    const raw = viewFacts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
+    return fillName(raw, personName || "someone");
   }
 
   function linesOf(items) {
@@ -79,16 +98,20 @@
   const status = $derived(record?.status || (open ? "pending" : ""));
   const titleOf = (id) => nameOf(id);
   const tree = $derived(
-    open ? explainAssert(open.formula, viewFacts, titleOf, record?.status === "proved" ? record.graph : null) : null,
+    open && record?.status === "proved"
+      ? explainAssert(open.formula, viewFacts, titleOf, record.graph)
+      : null,
   );
   const shown = $derived(open?.formula ? readClaim(open.formula) : null);
   const options = $derived(atomChoices(facts, labels));
   const visible = $derived(
-    asserts.filter((item) => {
-      const needle = query.trim().toLowerCase();
-      if (!needle) return true;
-      return item.title.toLowerCase().includes(needle) || blurb(item.formula).toLowerCase().includes(needle);
-    }),
+    asserts
+      .filter((item) => {
+        const needle = query.trim().toLowerCase();
+        if (!needle) return true;
+        return item.title.toLowerCase().includes(needle) || blurb(item.formula).toLowerCase().includes(needle);
+      })
+      .sort((a, b) => a.title.localeCompare(b.title)),
   );
   const mine = $derived(visible.filter((item) => !item.shared));
   const sharedAsserts = $derived(visible.filter((item) => item.shared));
@@ -107,13 +130,34 @@
     return { id: fact ? id : "", title: nameOf(id) };
   }
 
+  const outcomes = $derived(
+    Object.entries(labels)
+      .filter(([id]) => !facts.some((fact) => fact.id === id))
+      .map(([id, label]) => ({ id, title: fillName(label), sort: label }))
+      .sort((a, b) => a.sort.localeCompare(b.sort)),
+  );
+  const criteria = $derived(
+    facts
+      .filter((fact) => fact.role === "criterion" && !fact.formula)
+      .map((fact) => ({ id: fact.id, title: fillName(fact.claim), sort: fact.claim }))
+      .sort((a, b) => a.sort.localeCompare(b.sort)),
+  );
+
   function current() {
+    if (legacy) {
+      return JSON.stringify({
+        title: title.trim(),
+        description: description.trim(),
+        join,
+        parts: linesOf(parts),
+        then: thenId,
+      });
+    }
     return JSON.stringify({
       title: title.trim(),
       description: description.trim(),
-      join,
-      parts: linesOf(parts),
-      then: thenId,
+      outcomeId,
+      enabled: [...enabled].sort(),
     });
   }
 
@@ -121,9 +165,13 @@
     title = open?.title || "";
     description = open?.description || "";
     const claim = open?.formula ? readClaim(open.formula) : null;
+    const bare = open?.formula?.trim().match(/^fact:([A-Za-z0-9_]+)$/);
+    legacy = Boolean(open && claim && !bare);
     join = claim?.join || "and";
     parts = claim ? [...claim.partIds] : ["", ""];
     thenId = claim?.thenId || "";
+    outcomeId = bare?.[1] || "";
+    enabled = [...(open?.assumes || [])];
     base = current();
   }
 
@@ -132,6 +180,7 @@
     if (key === seen) return;
     seen = key;
     editing = false;
+    logs = false;
     fill();
   });
 
@@ -146,11 +195,23 @@
   async function submit(event) {
     event.preventDefault();
     if (!dirty) return;
-    const picked = linesOf(parts);
-    const known = new Set(options.map((item) => item.id));
-    if (!picked.length || !thenId || picked.some((id) => !known.has(id)) || !known.has(thenId)) {
-      onerror(new Error("pick a fact, criterion, or theorem that exists"));
-      return;
+    let formula = "";
+    let assumes = [];
+    if (legacy) {
+      const picked = linesOf(parts);
+      const known = new Set(options.map((item) => item.id));
+      if (!picked.length || !thenId || picked.some((id) => !known.has(id)) || !known.has(thenId)) {
+        onerror(new Error("pick a fact, criterion, or theorem that exists"));
+        return;
+      }
+      formula = compileClaim(join, picked, thenId);
+    } else {
+      if (!outcomes.some((item) => item.id === outcomeId)) {
+        onerror(new Error("pick an outcome"));
+        return;
+      }
+      formula = `fact:${outcomeId}`;
+      assumes = enabled.filter((id) => criteria.some((item) => item.id === id));
     }
     const taken = new Set([
       ...facts.map((fact) => fact.id),
@@ -161,7 +222,8 @@
     const body = {
       title: title.trim(),
       description: description.trim(),
-      formula: compileClaim(join, picked, thenId),
+      formula,
+      assumes,
       labels: {},
     };
     try {
@@ -221,31 +283,35 @@
     {/if}
     <div class="list">
       {#each mine as assert (assert.id)}
-        {@const state = graphs[assert.id]?.status || "pending"}
+        {@const state = assertState(assert)}
         <button
           class="pick assert-pick"
+          class:good={state === "proved"}
+          class:bad={state === "invalid"}
           class:selected={open?.id === assert.id}
           type="button"
           title={blurb(assert.formula)}
           onclick={() => onchoose(assert.id)}
         >
           <span class="seal-dot {state}"></span>
-          <span>{assert.title}</span>
+          <span>{assertTitle(assert)}</span>
         </button>
       {/each}
       {#if sharedAsserts.length}
         <h3>shared</h3>
         {#each sharedAsserts as assert (assert.id)}
-          {@const state = graphs[assert.id]?.status || "pending"}
+          {@const state = assertState(assert)}
           <button
             class="pick assert-pick"
+            class:good={state === "proved"}
+            class:bad={state === "invalid"}
             class:selected={open?.id === assert.id}
             type="button"
             title={blurb(assert.formula)}
             onclick={() => onchoose(assert.id)}
           >
             <span class="seal-dot {state}"></span>
-            <span>{assert.title}</span>
+            <span>{assertTitle(assert)}</span>
           </button>
         {/each}
       {/if}
@@ -280,38 +346,57 @@
           {/if}
         </div>
       </div>
-      <h2 class="item-title">{personName ? open.title.replaceAll("{name}", personName) : open.title}</h2>
-      {#if people.length}
-        <label class="person-pick">
-          person
-          <select value={personId} onchange={(event) => onperson(event.currentTarget.value)}>
-            <option value="">library, no person</option>
+      <div class="spread head-line">
+        <h2 class="item-title">{fillName(open.title, personName || "someone")}</h2>
+        {#if people.length}
+          <div class="who" role="group" aria-label="whose facts to use">
+            <span>for</span>
+            <button type="button" class:on={!personId} onclick={() => onperson("")}>the library</button>
             {#each people as item (item.id)}
-              <option value={item.id}>{item.name}</option>
+              <button type="button" class:on={personId === item.id} onclick={() => onperson(item.id)}>{item.name}</button>
             {/each}
-          </select>
-        </label>
-      {/if}
+          </div>
+        {/if}
+      </div>
       {#if open.description}
         <p class="dek">{open.description}</p>
+      {/if}
+      {#if open.assumes?.length}
+        <p class="dek">Assuming {open.assumes.map((id) => nameOf(id)).join(", ")}.</p>
       {/if}
       {#if shown}
         <ClaimView join={shown.join} parts={shown.partIds.map(phrase)} thenTitle={phrase(shown.thenId)} onopen={onopenFact} />
       {/if}
-      {#if tree}
+      {#if status === "proved" && tree}
         <div class="proof">
-          {#key open.id}
+          {#key `${open.id}:${personId}`}
             <ProofDag {tree} onopen={onopenFact} />
           {/key}
         </div>
+      {:else if status === "invalid"}
+        <p class="dek reject">
+          This assertion does not prove.
+          {#if record?.diagnostics}
+            <button
+              class="icon"
+              type="button"
+              aria-label={logs ? "hide logs" : "show logs"}
+              title={logs ? "hide logs" : "show logs"}
+              onclick={() => (logs = !logs)}
+            >
+              <Icon name="eye" />
+            </button>
+          {/if}
+        </p>
+        {#if logs && record?.diagnostics}
+          <pre class="diagnostic">{record.diagnostics}</pre>
+        {/if}
       {/if}
     </div>
       {#if personView?.missing?.length}
         <p class="missing">To make this hold, turn on: {personView.missing.map((item) => item.claim).join(", ")}.</p>
       {/if}
-      {#if record?.diagnostics}
-        <pre class="diagnostic">{shortDiagnostic(record.diagnostics)}</pre>
-      {/if}
+
       {#if open}
         <Comments
           {thread}
@@ -335,7 +420,38 @@
         </div>
         <label>title <input bind:value={title} /></label>
         <label>description <textarea bind:value={description}></textarea></label>
-        <ClaimFields bind:join bind:parts bind:thenId {options} />
+        {#if legacy}
+          <ClaimFields bind:join bind:parts bind:thenId {options} />
+        {:else}
+          <label>
+            outcome
+            <select bind:value={outcomeId}>
+              <option value="">pick an outcome</option>
+              {#each outcomes as item (item.id)}
+                <option value={item.id}>{item.title}</option>
+              {/each}
+            </select>
+          </label>
+          <p class="kicker">criteria to assume</p>
+          <ul class="toggles">
+            {#each criteria as item (item.id)}
+              <li>
+                <label class="fact-toggle">
+                  <input
+                    type="checkbox"
+                    checked={enabled.includes(item.id)}
+                    onchange={(event) => {
+                      enabled = event.currentTarget.checked
+                        ? [...enabled, item.id]
+                        : enabled.filter((id) => id !== item.id);
+                    }}
+                  />
+                  <span>{item.title}</span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+        {/if}
         <div class="actions">
           {#if dirty}
             <button class="icon primary" type="submit" aria-label="save" title="save">

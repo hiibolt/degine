@@ -48,6 +48,8 @@ pub(super) struct AssertWrite {
     title: String,
     description: String,
     formula: String,
+    #[serde(default)]
+    assumes: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -63,11 +65,12 @@ pub(super) async fn create_assert(
     Json(body): Json<NewAssert>,
 ) -> Result<impl IntoResponse, AppError> {
     require_owner(&state, &user_id)?;
-    let assert = assert_from(body.id, body.write)?;
+    let assert = assert_from(&state, body.id, body.write)?;
     if id_taken(&state, &assert.id)? {
         return Err(AppError::conflict(format!("id `{}` is already used", assert.id)));
     }
     state.db.insert_assert(&assert)?;
+    state.db.set_assert_assumes(&assert.id, &assert.assumes)?;
     publish(
         &state,
         ServerEvent::AssertChanged {
@@ -86,13 +89,14 @@ pub(super) async fn update_assert(
     Json(body): Json<AssertWrite>,
 ) -> Result<Json<Assert>, AppError> {
     require_owner(&state, &user_id)?;
-    let assert = assert_from(id, body)?;
+    let assert = assert_from(&state, id, body)?;
     if state.db.fact(&assert.id)?.is_some() || state.db.rule(&assert.id)?.is_some() {
         return Err(AppError::conflict(format!("id `{}` is already used", assert.id)));
     }
     if !state.db.update_assert(&assert)? {
         return Err(AppError::not_found());
     }
+    state.db.set_assert_assumes(&assert.id, &assert.assumes)?;
     publish(
         &state,
         ServerEvent::AssertChanged {
@@ -110,6 +114,7 @@ pub(super) async fn delete_assert(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     require_owner(&state, &user_id)?;
+    state.db.set_assert_assumes(&id, &[])?;
     if !state.db.delete_assert(&id)? {
         return Err(AppError::not_found());
     }
@@ -130,12 +135,23 @@ pub(super) async fn assert_graph(
     Ok(Json(graph_body(state.db.assert_graph(&id)?)))
 }
 
-fn assert_from(id: String, body: AssertWrite) -> Result<Assert, AppError> {
+fn assert_from(state: &AppState, id: String, body: AssertWrite) -> Result<Assert, AppError> {
     require_id(&id)?;
+    let facts = state.db.list_facts()?;
+    let assumes = body
+        .assumes
+        .into_iter()
+        .filter(|id| {
+            facts.iter().any(|fact| {
+                fact.id == *id && fact.role == "criterion" && fact.formula.is_none()
+            })
+        })
+        .collect();
     Ok(Assert {
         id,
         title: clean_text(&body.title, "title")?,
         description: body.description.trim().to_string(),
         formula: clean_text(&body.formula, "formula")?,
+        assumes,
     })
 }

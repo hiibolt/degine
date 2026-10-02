@@ -128,7 +128,7 @@ export function outcomeBoard(facts, labels, titleOf) {
             ),
         )
         .slice(0, 24);
-      return { id, title: titleOf(id), ways };
+      return { id, title: titleOf(id), sort: labels[id] || id, ways };
     })
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort((a, b) => a.sort.localeCompare(b.sort));
 }

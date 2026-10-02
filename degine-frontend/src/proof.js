@@ -92,6 +92,10 @@ export function explainItem(item, facts, titleOf) {
 }
 
 export function explainAssert(formula, facts, titleOf, graph) {
+  const bare = formula.trim().match(/^fact:([A-Za-z0-9_]+)$/);
+  if (bare) {
+    return explainAtom(bare[1], facts, titleOf, new Set(), new Set(), usedTheorems(graph, facts));
+  }
   const claim = readClaim(formula);
   if (!claim) return null;
   const assumed = new Set(claim.partIds);

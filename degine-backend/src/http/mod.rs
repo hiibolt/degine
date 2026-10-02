@@ -260,6 +260,12 @@ fn enqueue_debate(state: &AppState) -> Result<()> {
 }
 
 fn assert_job(assert: &Assert, facts: &[Fact], rules: &[Rule]) -> JobRequest {
+    let mut facts = facts.to_vec();
+    for id in &assert.assumes {
+        if let Some(fact) = facts.iter_mut().find(|fact| fact.id == *id) {
+            fact.role = "fact".into();
+        }
+    }
     let mut premises: Vec<String> = facts
         .iter()
         .filter(|fact| fact.role != "criterion")

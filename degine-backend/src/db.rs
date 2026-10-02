@@ -438,7 +438,9 @@ impl Db {
             "SELECT id, title, description, formula FROM asserts ORDER BY id",
             &[],
         )?;
-        rows.iter().map(read_assert).collect::<Result<_, _>>()
+        let mut asserts = rows.iter().map(read_assert).collect::<Result<Vec<_>, _>>()?;
+        attach_assumes(&mut conn, &mut asserts)?;
+        Ok(asserts)
     }
 
     pub fn get_assert(&self, id: &str) -> Result<Option<Assert>> {
@@ -454,7 +456,25 @@ impl Db {
             "SELECT id, title, description, formula FROM asserts WHERE id = $1",
             &[&id],
         )?;
-        found.map(|row| read_assert(&row)).transpose()
+        let Some(row) = found else {
+            return Ok(None);
+        };
+        let mut one = vec![read_assert(&row)?];
+        attach_assumes(&mut conn, &mut one)?;
+        Ok(one.into_iter().next())
+    }
+
+    pub fn set_assert_assumes(&self, assert_id: &str, ids: &[String]) -> Result<()> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let like = format!("~assume:{assert_id}:%");
+            conn.execute("DELETE FROM labels WHERE id LIKE $1", &[&like])?;
+            for id in ids {
+                let label = format!("~assume:{assert_id}:{id}");
+                Self::put_label(&mut conn, &label, "on")?;
+            }
+            Ok(())
+        })
     }
 
     pub fn insert_assert(&self, assert: &Assert) -> Result<()> {
@@ -1014,7 +1034,21 @@ fn read_assert(row: &Row) -> Result<Assert> {
         title: row.get(1),
         description: row.get(2),
         formula: row.get(3),
+        assumes: Vec::new(),
     })
+}
+
+fn attach_assumes(conn: &mut Client, asserts: &mut [Assert]) -> Result<()> {
+    let rows = conn.query("SELECT id FROM labels WHERE id LIKE '~assume:%'", &[])?;
+    for row in rows {
+        let id: String = row.get(0);
+        let Some(rest) = id.strip_prefix("~assume:") else { continue };
+        let Some((assert_id, fact_id)) = rest.split_once(':') else { continue };
+        if let Some(assert) = asserts.iter_mut().find(|item| item.id == assert_id) {
+            assert.assumes.push(fact_id.to_string());
+        }
+    }
+    Ok(())
 }
 
 fn read_fact(row: &Row) -> Result<Fact> {

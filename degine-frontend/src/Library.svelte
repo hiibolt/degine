@@ -5,7 +5,7 @@
   import Comments from "./Comments.svelte";
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
-  import { atomChoices, compileClaim, readClaim, uniqueSlug } from "./phrases.js";
+  import { atomChoices, compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
   import { explainItem } from "./proof.js";
 
   let {
@@ -88,13 +88,63 @@
     return fact.formula ? "theorem" : "fact";
   }
 
+  const toneOf = $derived.by(() => {
+    const byId = new Map(facts.map((fact) => [fact.id, fact]));
+    const byThen = new Map();
+    for (const fact of facts) {
+      const claim = fact.formula ? readClaim(fact.formula) : null;
+      if (!claim) continue;
+      const list = byThen.get(claim.thenId) || [];
+      list.push(claim);
+      byThen.set(claim.thenId, list);
+    }
+    const memo = new Map();
+    function atom(id, stack) {
+      if (memo.has(id)) return memo.get(id);
+      const fact = byId.get(id);
+      if (fact && !fact.formula) return fact.role === "criterion" ? "open" : "good";
+      if (stack.has(id)) return "open";
+      const next = new Set(stack);
+      next.add(id);
+      const claims = byThen.get(id) || [];
+      if (!claims.length) return "open";
+      const tones = claims.map((claim) => claimTone(claim, next));
+      const tone = tones.every((item) => item === "good") ? "good" : "open";
+      memo.set(id, tone);
+      return tone;
+    }
+    function claimTone(claim, stack) {
+      const tones = claim.partIds.map((id) => atom(id, stack));
+      if (claim.join === "or") return tones.some((item) => item === "good") ? "good" : "open";
+      return tones.every((item) => item === "good") ? "good" : "open";
+    }
+    const tones = new Map();
+    for (const fact of facts) {
+      if (!fact.formula) {
+        tones.set(fact.id, fact.role === "criterion" ? "open" : "good");
+        continue;
+      }
+      const claim = readClaim(fact.formula);
+      tones.set(fact.id, claim ? claimTone(claim, new Set()) : "open");
+    }
+    return tones;
+  });
+
+  function tone(fact) {
+    return toneOf.get(fact.id) || "";
+  }
+
   function openKind(id) {
     const fact = facts.find((item) => item.id === id);
     return fact ? roleOf(fact) : "";
   }
 
+  function someone(text) {
+    return fillName(text);
+  }
+
   function nameOf(id) {
-    return facts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
+    return someone(facts.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id);
   }
 
   function lines(value) {
@@ -114,7 +164,7 @@
       const claim = readClaim(fact.formula);
       if (!claim) continue;
       if (claim.partIds.includes(atom) || claim.thenId === atom) {
-        rows.push({ id: fact.id, title: fact.claim, kind: "fact" });
+        rows.push({ id: fact.id, title: someone(fact.claim), kind: "fact" });
       }
     }
     for (const assert of asserts) {
@@ -284,8 +334,8 @@
       </div>
       <div class="list">
         {#each listed.fact as fact (fact.id)}
-          <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-            {fact.claim}
+          <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+            {someone(fact.claim)}
           </button>
         {/each}
       </div>
@@ -299,8 +349,8 @@
       </div>
       <div class="list">
         {#each listed.criterion as fact (fact.id)}
-          <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-            {fact.claim}
+          <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+            {someone(fact.claim)}
           </button>
         {/each}
       </div>
@@ -328,8 +378,8 @@
       {/if}
       <div class="list">
         {#each theorems as fact (fact.id)}
-          <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-            {fact.claim}
+          <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+            {someone(fact.claim)}
           </button>
         {/each}
       </div>
@@ -340,8 +390,8 @@
         <summary>shared</summary>
         <div class="list">
           {#each sharedFacts as fact (fact.id)}
-            <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-              {fact.claim}
+            <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+              {someone(fact.claim)}
             </button>
           {/each}
         </div>
@@ -364,7 +414,7 @@
             </button>
           {/if}
         </div>
-        <h2 class="item-title">{open.claim}</h2>
+        <h2 class="item-title">{someone(open.claim)}</h2>
         {#if shown}
           <ClaimView
             join={shown.join}
