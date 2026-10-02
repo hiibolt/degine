@@ -24,7 +24,7 @@
   let asserts = $state([]);
   let labels = $state({});
   let graphs = $state({});
-  let tab = $state("library");
+  let tab = $state("outcomes");
   let comments = $state({});
   let selected = $state(null);
   let drafting = $state(null);
