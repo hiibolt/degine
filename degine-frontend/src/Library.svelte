@@ -334,8 +334,9 @@
       </div>
       <div class="list">
         {#each listed.fact as fact (fact.id)}
-          <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-            {someone(fact.claim)}
+          <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+            <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
+            <span>{someone(fact.claim)}</span>
           </button>
         {/each}
       </div>
@@ -349,8 +350,9 @@
       </div>
       <div class="list">
         {#each listed.criterion as fact (fact.id)}
-          <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-            {someone(fact.claim)}
+          <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+            <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
+            <span>{someone(fact.claim)}</span>
           </button>
         {/each}
       </div>
@@ -378,8 +380,9 @@
       {/if}
       <div class="list">
         {#each theorems as fact (fact.id)}
-          <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-            {someone(fact.claim)}
+          <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+            <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
+            <span>{someone(fact.claim)}</span>
           </button>
         {/each}
       </div>
@@ -390,8 +393,9 @@
         <summary>shared</summary>
         <div class="list">
           {#each sharedFacts as fact (fact.id)}
-            <button class="pick {tone(fact)}" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-              {someone(fact.claim)}
+            <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
+              <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
+              <span>{someone(fact.claim)}</span>
             </button>
           {/each}
         </div>

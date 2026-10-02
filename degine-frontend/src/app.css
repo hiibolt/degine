@@ -11,6 +11,7 @@
   --ok: #2c6b48;
   --bad: #9a3b2f;
   --wait: #8a6230;
+  --maybe: #6d8eae;
   --sans: ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -318,7 +319,7 @@ h2 {
   width: 100%;
   display: flex;
   gap: 0.45rem;
-  align-items: baseline;
+  align-items: flex-start;
   text-align: left;
   background: transparent;
   border-color: transparent;
@@ -332,30 +333,12 @@ h2 {
 }
 
 .pick.good {
-  background: #e4f0e2;
-}
-
-.pick.bad {
-  background: #f6e3de;
+  background: #b7ddb0;
 }
 
 .pick.good:hover,
 .pick.good.selected {
-  background: #d3e6d0;
-}
-
-.pick.bad:hover,
-.pick.bad.selected {
-  background: #f0d0c9;
-}
-
-.pick.open {
-  background: #f3f7fb;
-}
-
-.pick.open:hover,
-.pick.open.selected {
-  background: #e8f0f7;
+  background: #a3d29b;
 }
 
 .item-title {
@@ -529,20 +512,24 @@ button.chip {
 }
 
 .seal-dot {
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.72rem;
+  height: 0.72rem;
+  margin-top: calc((1lh - 0.72rem) / 2);
   border-radius: 50%;
-  background: var(--wait);
+  background: #e0a15a;
   flex: none;
-  transform: translateY(0.05rem);
 }
 
 .seal-dot.proved {
-  background: var(--ok);
+  background: #3cba6a;
 }
 
 .seal-dot.invalid {
-  background: var(--bad);
+  background: #e10600;
+}
+
+.seal-dot.open {
+  background: #4aa3e0;
 }
 
 .stage {

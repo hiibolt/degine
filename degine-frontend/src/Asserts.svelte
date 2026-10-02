@@ -287,7 +287,6 @@
         <button
           class="pick assert-pick"
           class:good={state === "proved"}
-          class:bad={state === "invalid"}
           class:selected={open?.id === assert.id}
           type="button"
           title={blurb(assert.formula)}
@@ -304,7 +303,6 @@
           <button
             class="pick assert-pick"
             class:good={state === "proved"}
-            class:bad={state === "invalid"}
             class:selected={open?.id === assert.id}
             type="button"
             title={blurb(assert.formula)}

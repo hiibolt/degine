@@ -97,8 +97,6 @@
         <button
           class="pick"
           class:good={item.ways.some((way) => !way.assumes.length)}
-          class:bad={!item.ways.length}
-          class:open={item.ways.length > 0 && item.ways.every((way) => way.assumes.length)}
           class:selected={current?.id === item.id}
           type="button"
           onclick={() => {
@@ -106,7 +104,8 @@
             openKey = "";
           }}
         >
-          {item.title}
+          <span class="seal-dot {item.ways.some((way) => !way.assumes.length) ? 'proved' : item.ways.length ? 'open' : 'invalid'}"></span>
+          <span>{item.title}</span>
         </button>
       {/each}
     </div>
