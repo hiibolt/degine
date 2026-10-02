@@ -59,7 +59,7 @@ pub(super) struct NewAssert {
 
 pub(super) async fn create_assert(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Json(body): Json<NewAssert>,
 ) -> Result<impl IntoResponse, AppError> {
     require_owner(&state, &user_id)?;
@@ -81,7 +81,7 @@ pub(super) async fn create_assert(
 
 pub(super) async fn update_assert(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
     Json(body): Json<AssertWrite>,
 ) -> Result<Json<Assert>, AppError> {
@@ -106,7 +106,7 @@ pub(super) async fn update_assert(
 
 pub(super) async fn delete_assert(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     require_owner(&state, &user_id)?;

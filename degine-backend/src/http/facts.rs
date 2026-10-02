@@ -57,7 +57,7 @@ pub(super) struct NewFact {
 
 pub(super) async fn create_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Json(body): Json<NewFact>,
 ) -> Result<impl IntoResponse, AppError> {
     require_owner(&state, &user_id)?;
@@ -74,7 +74,7 @@ pub(super) async fn create_fact(
 
 pub(super) async fn update_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
     Json(body): Json<FactWrite>,
 ) -> Result<Json<Fact>, AppError> {
@@ -143,7 +143,7 @@ pub(super) async fn derive_fact(
 
 pub(super) async fn delete_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     require_owner(&state, &user_id)?;
@@ -175,7 +175,7 @@ pub(super) async fn list_labels(
 
 pub(super) async fn put_labels(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Json(body): Json<BTreeMap<String, String>>,
 ) -> Result<StatusCode, AppError> {
     require_owner(&state, &user_id)?;

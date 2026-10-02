@@ -15,7 +15,7 @@ pub(super) struct ShareBody {
 
 pub(super) async fn list_shares(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
 ) -> Result<Json<Vec<String>>, AppError> {
     require_owner(&state, &user_id)?;
@@ -46,7 +46,7 @@ pub(super) async fn grant_share(
 
 pub(super) async fn revoke_share(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path((id, grantee)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     require_owner(&state, &user_id)?;

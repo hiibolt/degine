@@ -168,7 +168,7 @@ impl Db {
     }
 
     pub fn delete_fact(&self, id: &str) -> Result<bool> {
-        self.hop(|db| {
+        self.hop(|_db| {
             let changed = self
                 .lock()?
                 .execute("DELETE FROM facts WHERE id = $1", &[&id])
@@ -367,7 +367,7 @@ impl Db {
     }
 
     pub fn delete_assert(&self, id: &str) -> Result<bool> {
-        self.hop(|db| {
+        self.hop(|_db| {
             let changed = self
                 .lock()?
                 .execute("DELETE FROM asserts WHERE id = $1", &[&id])
@@ -434,7 +434,7 @@ impl Db {
     }
 
     pub fn delete_rule(&self, id: &str) -> Result<bool> {
-        self.hop(|db| {
+        self.hop(|_db| {
             let changed = self
                 .lock()?
                 .execute("DELETE FROM rules WHERE id = $1", &[&id])
@@ -554,7 +554,7 @@ impl Db {
     }
 
     pub fn delete_comment(&self, id: i64) -> Result<bool> {
-        self.hop(|db| {
+        self.hop(|_db| {
             let changed = self
                 .lock()?
                 .execute("DELETE FROM comments WHERE id = $1", &[&id])
@@ -607,7 +607,7 @@ impl Db {
     }
 
     pub fn revoke_share(&self, assert_id: &str, email: &str) -> Result<bool> {
-        self.hop(|db| {
+        self.hop(|_db| {
             let changed = self
                 .lock()?
                 .execute(

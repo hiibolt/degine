@@ -63,7 +63,7 @@ pub(super) struct CommentEdit {
 
 pub(super) async fn update_comment(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: _user_id, email: username }: Authed,
     Path(id): Path<i64>,
     Json(body): Json<CommentEdit>,
 ) -> Result<Json<Comment>, AppError> {

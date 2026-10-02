@@ -15,7 +15,7 @@ use super::{
 
 pub(super) async fn list_rules(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
 ) -> Result<Json<Vec<Rule>>, AppError> {
     if is_owner(&state, &user_id)? {
         Ok(Json(state.db.list_rules()?))
@@ -39,7 +39,7 @@ pub(super) struct NewRule {
 
 pub(super) async fn create_rule(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Json(body): Json<NewRule>,
 ) -> Result<impl IntoResponse, AppError> {
     require_owner(&state, &user_id)?;
@@ -56,7 +56,7 @@ pub(super) async fn create_rule(
 
 pub(super) async fn update_rule(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
     Json(body): Json<RuleWrite>,
 ) -> Result<Json<Rule>, AppError> {
@@ -79,7 +79,7 @@ pub(super) async fn update_rule(
 
 pub(super) async fn delete_rule(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     require_owner(&state, &user_id)?;
@@ -94,7 +94,7 @@ pub(super) async fn delete_rule(
 
 pub(super) async fn rule_graph(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    Authed { id: user_id, email: _username }: Authed,
     Path(id): Path<String>,
 ) -> Result<Json<GraphBody>, AppError> {
     if !is_owner(&state, &user_id)? || state.db.rule(&id)?.is_none() {
