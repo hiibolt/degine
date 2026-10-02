@@ -24,6 +24,11 @@ http {
       proxy_set_header Host $host;
     }
 
+    location = /config.js {
+      root /usr/share/nginx/html;
+      add_header Cache-Control "no-store";
+    }
+
     location / {
       root /usr/share/nginx/html;
       try_files $uri $uri/ /index.html;
