@@ -1,6 +1,5 @@
 <script>
   import { api, connectEvents, ApiError } from "./api.js";
-  import { emailForName, rememberName } from "./names.js";
   import { supabase } from "./session.js";
   import { argumentPieces, renderAssert } from "./export.js";
   import { downloadText, matchDecl, relevantPieces, renderArgument, shortDiagnostic } from "./prose.js";
@@ -12,7 +11,7 @@
   import Toast from "./Toast.svelte";
 
   let authMode = $state("in");
-  let signName = $state("");
+  let signEmail = $state("");
   let signPassword = $state("");
   let joinEmail = $state("");
   let joinName = $state("");
@@ -78,14 +77,9 @@
   async function login(event) {
     event.preventDefault();
     error = "";
-    const name = cleanName(signName);
-    const email = emailForName(name);
-    if (!name || !signPassword) {
-      error = "username and password";
-      return;
-    }
-    if (!email) {
-      error = "no account with that username on this browser. sign up on this one first.";
+    const email = signEmail.trim().toLowerCase();
+    if (!email.includes("@") || !signPassword) {
+      error = "email and password";
       return;
     }
     try {
@@ -124,7 +118,6 @@
         options: { data: { username: name } },
       });
       if (authError) throw new Error(authError.message);
-      rememberName(name, email);
       joinPassword = "";
       joinConfirm = "";
       if (!data.session) error = "check your email to finish signing up.";
@@ -554,8 +547,8 @@
       <form class="card login stack" onsubmit={login}>
         <h1>degine</h1>
         <label>
-          username
-          <input bind:value={signName} autocomplete="username" />
+          email
+          <input bind:value={signEmail} type="email" autocomplete="email" />
         </label>
         <label>
           password
