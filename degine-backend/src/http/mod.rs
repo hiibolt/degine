@@ -54,12 +54,20 @@ impl FromRequestParts<AppState> for Authed {
         if token.is_empty() {
             return Err(AppError::unauthorized("unauthorized"));
         }
+        if let Some(person) = state.db.person_for_token(token)? {
+            state.db.claim_owner(&person.0)?;
+            return Ok(Authed {
+                id: person.0,
+                email: person.1,
+            });
+        }
         let person = state
             .auth
             .verify(token)
             .await
             .map_err(|_| AppError::unauthorized("unauthorized"))?;
         state.db.claim_owner(&person.id)?;
+        state.db.note_email(&person.id, &person.email)?;
         Ok(Authed {
             id: person.id,
             email: person.email,
@@ -97,6 +105,8 @@ pub async fn serve(config: Config) -> Result<()> {
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/me", get(live::me))
+        .route("/account/token", get(live::show_token).post(live::reset_token))
+        .route("/facts/{id}/derive", post(facts::derive_fact))
         .route("/ws", get(live::ws))
         .route("/facts", get(facts::list_facts).post(facts::create_fact))
         .route(

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -15,6 +16,7 @@ pub struct Db {
     slots: Arc<Vec<Mutex<Client>>>,
     next: Arc<AtomicUsize>,
     owner: Arc<Mutex<Option<String>>>,
+    emails: Arc<Mutex<HashMap<String, String>>>,
 }
 
 pub struct GraphRecord {
@@ -54,6 +56,7 @@ impl Db {
             slots: Arc::new(slots),
             next: Arc::new(AtomicUsize::new(0)),
             owner: Arc::new(Mutex::new(None)),
+            emails: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -673,6 +676,135 @@ impl Db {
         graph_record(found)
     }
 
+    fn setting(&self, key: &str) -> Result<Option<String>> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            Ok(conn
+                .query_opt("SELECT value FROM settings WHERE key = $1", &[&key])?
+                .map(|row| row.get(0)))
+        })
+    }
+
+    fn put_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ($1, $2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                &[&key, &value],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn note_email(&self, user_id: &str, email: &str) -> Result<()> {
+        if let Ok(guard) = self.emails.lock() {
+            if guard.get(user_id).map(String::as_str) == Some(email) {
+                return Ok(());
+            }
+        }
+        self.put_setting(&format!("email:{user_id}"), email)?;
+        if let Ok(mut guard) = self.emails.lock() {
+            guard.insert(user_id.to_string(), email.to_string());
+        }
+        Ok(())
+    }
+
+    pub fn api_token(&self, user_id: &str) -> Result<String> {
+        let key = format!("token:{user_id}");
+        if let Some(token) = self.setting(&key)? {
+            return Ok(token);
+        }
+        let token = mint_token(user_id);
+        self.put_setting(&key, &token)?;
+        Ok(token)
+    }
+
+    pub fn reset_api_token(&self, user_id: &str) -> Result<String> {
+        let token = mint_token(user_id);
+        self.put_setting(&format!("token:{user_id}"), &token)?;
+        Ok(token)
+    }
+
+    pub fn person_for_token(&self, token: &str) -> Result<Option<(String, String)>> {
+        let Some(rest) = token.strip_prefix("dg1.") else {
+            return Ok(None);
+        };
+        let Some((user_id, _)) = rest.split_once('.') else {
+            return Ok(None);
+        };
+        let Some(stored) = self.setting(&format!("token:{user_id}"))? else {
+            return Ok(None);
+        };
+        if stored != token {
+            return Ok(None);
+        }
+        let Some(email) = self.setting(&format!("email:{user_id}"))? else {
+            return Ok(None);
+        };
+        Ok(Some((user_id.to_string(), email)))
+    }
+
+    /// The fact's id stays the conclusion atom. Its text and citations move onto a new theorem.
+    pub fn derive_fact(&self, old_id: &str, new_id: &str, new_claim: &str) -> Result<Fact> {
+        self.hop(|db| {
+            let mut conn = db.lock()?;
+            let mut tx = conn.transaction()?;
+            let found = tx.query_opt(
+                "SELECT claim, role FROM facts WHERE id = $1",
+                &[&old_id],
+            )?;
+            let Some(row) = found else {
+                anyhow::bail!("missing");
+            };
+            let old_claim: String = row.get(0);
+            let role: String = row.get(1);
+            if role != "fact" {
+                anyhow::bail!("not a fact");
+            }
+            if tx
+                .query_opt("SELECT id FROM facts WHERE id = $1", &[&new_id])?
+                .is_some()
+            {
+                anyhow::bail!("taken");
+            }
+            let citations: Vec<String> = tx
+                .query(
+                    "SELECT reference FROM fact_citations WHERE fact_id = $1 ORDER BY position",
+                    &[&old_id],
+                )?
+                .iter()
+                .map(|row| row.get(0))
+                .collect();
+            tx.execute(
+                "INSERT INTO facts (id, claim, formula, role) VALUES ($1, $2, NULL, 'fact')",
+                &[&new_id, &new_claim],
+            )?;
+            tx.execute("DELETE FROM fact_citations WHERE fact_id = $1", &[&old_id])?;
+            tx.execute("DELETE FROM facts WHERE id = $1", &[&old_id])?;
+            tx.execute(
+                "INSERT INTO labels (id, title) VALUES ($1, $2)
+                 ON CONFLICT(id) DO UPDATE SET title = excluded.title",
+                &[&old_id, &old_claim],
+            )?;
+            let theorem_id = fresh_id(&mut tx, &format!("{old_id}_because"))?;
+            let formula = format!("imp(fact:{new_id}, fact:{old_id})");
+            tx.execute(
+                "INSERT INTO facts (id, claim, formula, role) VALUES ($1, $2, $3, 'theorem')",
+                &[&theorem_id, &old_claim, &formula],
+            )?;
+            write_citations(&mut tx, &theorem_id, &citations)?;
+            tx.commit()?;
+            Ok(Fact {
+                id: theorem_id,
+                claim: old_claim,
+                citations,
+                formula: Some(formula),
+                role: "theorem".into(),
+            })
+        })
+    }
+
     pub fn claim_owner(&self, user_id: &str) -> Result<()> {
         if self.cached_owner().as_deref() == Some(user_id) {
             return Ok(());
@@ -800,6 +932,32 @@ fn attach_citations(conn: &mut Client, facts: &mut [Fact]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn mint_token(user_id: &str) -> String {
+    use std::io::Read;
+    let mut bytes = [0u8; 16];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut file| file.read_exact(&mut bytes));
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("dg1.{user_id}.{hex}")
+}
+
+fn fresh_id(tx: &mut Transaction<'_>, base: &str) -> Result<String> {
+    let mut id = base.to_string();
+    let mut n = 2;
+    loop {
+        let taken = tx
+            .query_opt("SELECT id FROM facts WHERE id = $1", &[&id])?
+            .is_some()
+            || tx
+                .query_opt("SELECT id FROM labels WHERE id = $1", &[&id])?
+                .is_some();
+        if !taken {
+            return Ok(id);
+        }
+        id = format!("{base}_{n}");
+        n += 1;
+    }
 }
 
 fn write_citations(tx: &mut Transaction<'_>, fact_id: &str, citations: &[String]) -> Result<()> {

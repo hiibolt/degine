@@ -145,6 +145,20 @@ textarea {
   overflow: hidden;
 }
 
+.veil {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(36 28 22 / 0.28);
+  z-index: 5;
+}
+
+.veil .card {
+  width: min(28rem, 100%);
+}
+
 .loading {
   margin: auto;
   color: var(--muted);

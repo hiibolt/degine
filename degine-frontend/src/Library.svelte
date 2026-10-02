@@ -28,6 +28,7 @@
     oneditcomment,
     ondeletecomment,
     onresolve,
+    onderive,
   } = $props();
 
   let title = $state("");
@@ -42,6 +43,8 @@
   let searching = $state(false);
   let finder = $state(null);
   let seen = "";
+  let deriving = $state(false);
+  let lowerTitle = $state("");
 
   const kind = $derived(drafting || (selected?.kind === "fact" ? openKind(selected.id) : ""));
   const open = $derived(
@@ -63,7 +66,7 @@
     const first = listed.fact[0] || listed.criterion[0] || listed.theorem[0] || sharedFacts[0];
     if (first) onchoose(first.id);
   });
-  const forming = $derived(Boolean(drafting) || editing);
+  const forming = $derived(Boolean(drafting) || editing || deriving);
   const dirty = $derived(current() !== base);
   const shown = $derived(open?.formula ? readClaim(open.formula) : null);
   const options = $derived(atomChoices(facts, labels));
@@ -353,6 +356,9 @@
         <div class="spread">
           <p class="kicker">{kind}</p>
           {#if owner}
+            {#if kind === "fact"}
+              <button class="quiet" type="button" onclick={() => (deriving = true)}>make a theorem</button>
+            {/if}
             <button class="icon" type="button" aria-label="edit" title="edit" onclick={() => (editing = true)}>
               <Icon name="pencil" />
             </button>
@@ -412,6 +418,31 @@
             {onresolve}
           />
         {/if}
+      {:else if deriving && open}
+        <form class="stack" onsubmit={async (event) => {
+          event.preventDefault();
+          const claim = lowerTitle.trim();
+          if (!claim) return onerror(new Error("name the new fact"));
+          const taken = new Set([...facts.map((fact) => fact.id), ...Object.keys(labels || {})]);
+          const id = uniqueSlug(claim, taken);
+          if (!id || id === open.id) return onerror(new Error("give the new fact its own name"));
+          try {
+            await onderive(open.id, id, claim);
+            deriving = false;
+            lowerTitle = "";
+          } catch (err) {
+            onerror(err);
+          }
+        }}>
+          <p class="kicker">make a theorem</p>
+          <p>the statement and its citations become a theorem. it depends on this new fact. the old id stays the conclusion.</p>
+          <label>
+            new fact
+            <input bind:value={lowerTitle} />
+          </label>
+          <button class="primary" type="submit">convert</button>
+          <button class="quiet" type="button" onclick={() => (deriving = false)}>cancel</button>
+        </form>
       {:else}
         <form class="stack" onsubmit={submit}>
           <div class="spread">

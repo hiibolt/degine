@@ -17,6 +17,29 @@ pub(super) struct MeBody {
     owner: bool,
 }
 
+#[derive(Serialize)]
+pub(super) struct TokenBody {
+    token: String,
+}
+
+pub(super) async fn show_token(
+    Authed { id: user_id, .. }: Authed,
+    State(state): State<AppState>,
+) -> Result<Json<TokenBody>, AppError> {
+    Ok(Json(TokenBody {
+        token: state.db.api_token(&user_id)?,
+    }))
+}
+
+pub(super) async fn reset_token(
+    Authed { id: user_id, .. }: Authed,
+    State(state): State<AppState>,
+) -> Result<Json<TokenBody>, AppError> {
+    Ok(Json(TokenBody {
+        token: state.db.reset_api_token(&user_id)?,
+    }))
+}
+
 pub(super) async fn me(
     Authed { id: user_id, email: username }: Authed,
     State(state): State<AppState>,

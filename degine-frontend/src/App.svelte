@@ -19,6 +19,8 @@
   let joinConfirm = $state("");
   let token = $state("");
   let username = $state("");
+  let account = $state(false);
+  let apiToken = $state("");
   let facts = $state([]);
   let rules = $state([]);
   let asserts = $state([]);
@@ -73,6 +75,37 @@
 
   function cleanName(value) {
     return value.trim().toLowerCase();
+  }
+
+  async function openAccount() {
+    account = true;
+    error = "";
+    try {
+      const body = await api("/account/token", { token });
+      apiToken = body.token;
+    } catch (err) {
+      handleError(err);
+    }
+  }
+
+  async function copyToken() {
+    await navigator.clipboard.writeText(apiToken);
+  }
+
+  async function resetToken() {
+    const body = await api("/account/token", { method: "POST", token });
+    apiToken = body.token;
+  }
+
+  async function deriveFact(id, nextId, claim) {
+    const theorem = await api(`/facts/${encodeURIComponent(id)}/derive`, {
+      method: "POST",
+      token,
+      body: { id: nextId, claim },
+    });
+    await loadAll(token);
+    selected = { kind: "fact", id: theorem.id };
+    return theorem;
   }
 
   async function login(event) {
@@ -607,7 +640,7 @@
         </nav>
       </div>
       <div class="hint session">
-        {username}
+        <button class="quiet" type="button" onclick={openAccount}>{username}</button>
         {#if live === "open"}
           · live
         {:else if live === "connecting" || live === "closed"}
@@ -688,6 +721,7 @@
       oneditcomment={editComment}
       ondeletecomment={removeComment}
       onresolve={resolveComment}
+      onderive={deriveFact}
       onopenAssert={(id) => {
         tab = "asserts";
         choose("assert", id);
@@ -695,6 +729,21 @@
     />
     {/if}
     </div>
+    {/if}
+    {#if account}
+      <div class="veil" onclick={() => (account = false)}>
+        <form class="card login stack" onclick={(event) => event.stopPropagation()} onsubmit={(event) => event.preventDefault()}>
+          <h2>account</h2>
+          <p class="kicker">{username}</p>
+          <label>
+            api token
+            <input readonly value={apiToken} />
+          </label>
+          <button class="primary" type="button" onclick={copyToken}>copy</button>
+          <button class="quiet" type="button" onclick={resetToken}>regenerate</button>
+          <button class="quiet" type="button" onclick={() => (account = false)}>close</button>
+        </form>
+      </div>
     {/if}
   </main>
 {/if}

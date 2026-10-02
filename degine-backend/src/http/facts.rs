@@ -95,6 +95,52 @@ pub(super) async fn update_fact(
     Ok(Json(fact))
 }
 
+#[derive(Deserialize)]
+pub(super) struct DeriveBody {
+    claim: String,
+    id: String,
+}
+
+pub(super) async fn derive_fact(
+    State(state): State<AppState>,
+    Authed { id: user_id, .. }: Authed,
+    Path(id): Path<String>,
+    Json(body): Json<DeriveBody>,
+) -> Result<Json<Fact>, AppError> {
+    require_owner(&state, &user_id)?;
+    require_id(&body.id)?;
+    let claim = clean_text(&body.claim, "claim")?;
+    if body.id == id {
+        return Err(AppError::bad_request("the new fact needs its own id"));
+    }
+    match state.db.derive_fact(&id, &body.id, &claim) {
+        Ok(theorem) => {
+            publish(&state, ServerEvent::FactDeleted { id: id.clone() });
+            publish(
+                &state,
+                ServerEvent::FactChanged {
+                    fact: Fact {
+                        id: body.id,
+                        claim: claim.clone(),
+                        citations: Vec::new(),
+                        formula: None,
+                        role: "fact".into(),
+                    },
+                },
+            );
+            publish(&state, ServerEvent::FactChanged { fact: theorem.clone() });
+            enqueue_debate(&state)?;
+            Ok(Json(theorem))
+        }
+        Err(err) => match err.to_string().as_str() {
+            "missing" => Err(AppError::not_found()),
+            "not a fact" => Err(AppError::bad_request("only a fact can become a theorem")),
+            "taken" => Err(AppError::conflict("that id is already used")),
+            _ => Err(err.into()),
+        },
+    }
+}
+
 pub(super) async fn delete_fact(
     State(state): State<AppState>,
     Authed { id: user_id, email: username }: Authed,
