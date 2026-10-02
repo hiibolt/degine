@@ -530,12 +530,20 @@ button.chip {
   background: #fbf7f1;
 }
 
-.dag-full {
+.dag-full,
+.dag-fold {
   position: absolute;
   top: 0.55rem;
-  right: 0.55rem;
   z-index: 6;
   background: #fffdf9;
+}
+
+.dag-full {
+  right: 0.55rem;
+}
+
+.dag-fold {
+  right: 2.55rem;
 }
 
 .proof-dag.cover,

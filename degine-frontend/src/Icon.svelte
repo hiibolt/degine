@@ -23,6 +23,10 @@
     <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
   {:else if name === "compress"}
     <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+  {:else if name === "unfold"}
+    <path d="M12 4v16M7 8l5-4 5 4M7 16l5 4 5-4" />
+  {:else if name === "fold"}
+    <path d="M12 4v16M7 8l5 4 5-4M7 16l5-4 5 4" />
   {:else if name === "inbox"}
     <path d="M4 13h4l1.5 2h5L16 13h4" />
     <path d="M4 13 6 5h12l2 8v6H4z" />

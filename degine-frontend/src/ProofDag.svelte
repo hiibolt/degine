@@ -29,6 +29,8 @@
   let native = $state(false);
   let rev = $state(0);
   const full = $derived(covered || native);
+  const spread = $derived.by(() => (tree ? opened(tree, "root", new Set()) : new Set()));
+  const wide = $derived(spread.size > 0 && [...spread].every((path) => expanded.has(path)));
 
   function byKind(step) {
     if (step.needs.length < 2) return "by";
@@ -201,6 +203,11 @@
     return () => document.removeEventListener("fullscreenchange", sync);
   });
 
+  function toggleAll() {
+    expanded = wide ? new Set() : opened(tree, "root", new Set());
+    focus = "root";
+  }
+
   function toggle(path) {
     const next = new Set(expanded);
     if (next.has(path)) {
@@ -261,6 +268,18 @@
     <Controls showLock={false} />
     <FlowFit stamp={framed} {rev} />
   </SvelteFlow>
+  {#if spread.size}
+    <button
+      class="icon dag-fold"
+      type="button"
+      aria-label={wide ? "collapse all" : "expand all"}
+      title={wide ? "collapse all" : "expand all"}
+      onpointerdown={(event) => event.stopPropagation()}
+      onclick={toggleAll}
+    >
+      <Icon name={wide ? "fold" : "unfold"} />
+    </button>
+  {/if}
   <button
     class="icon dag-full"
     type="button"
