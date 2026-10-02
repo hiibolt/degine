@@ -19,7 +19,7 @@
   }
 </script>
 
-<div class="dag-card" class:gate={data.gate} style="width:{data.width}px;min-height:{data.height}px">
+<div class="dag-card" class:gate={data.gate} class:dim={data.dim} style="width:{data.width}px;min-height:{data.height}px">
   <Handle type="source" position={Position.Top} />
   {#if data.gate}
     <span class="proof-role">{data.kind}</span>

@@ -607,6 +607,11 @@ button.chip {
   box-shadow: 0 8px 18px rgba(70, 42, 22, 0.05);
 }
 
+.dag-card.dim {
+  opacity: 0.38;
+  filter: grayscale(0.7);
+}
+
 .dag-card.gate {
   display: flex;
   flex-wrap: wrap;

@@ -66,7 +66,7 @@
     };
   }
 
-  function walk(node, path, open, built, links) {
+  function walk(node, path, open, built, links, dim = false) {
     const canOpen = !node.cycle && (node.steps.length > 0 || node.assumed.length > 0);
     built.push(
       card(path, {
@@ -78,6 +78,7 @@
         factId: node.library ? node.id : "",
         canOpen,
         open: open.has(path),
+        dim,
       }),
     );
     if (!open.has(path)) return;
@@ -100,8 +101,9 @@
       links.push({ parent: path, child: gate });
       step.needs.forEach((need, child) => {
         const id = `${path}/${index}/${child}`;
-        links.push({ parent: gate, child: id });
-        walk(need, id, open, built, links);
+        const spare = dim || (step.join === "or" && badge(need) === "open");
+        links.push({ parent: gate, child: id, dim: spare });
+        walk(need, id, open, built, links, spare);
       });
     });
 
@@ -123,8 +125,8 @@
     links.push({ parent: path, child: gate });
     node.assumed.forEach((extra, child) => {
       const id = `${path}/a/${child}`;
-      links.push({ parent: gate, child: id });
-      walk(extra, id, open, built, links);
+      links.push({ parent: gate, child: id, dim });
+      walk(extra, id, open, built, links, dim);
     });
   }
 
@@ -229,6 +231,7 @@
       source: edge.child,
       target: edge.parent,
       type: "smoothstep",
+      style: edge.dim ? "stroke:#c4a48a;stroke-width:1.6;opacity:0.35" : undefined,
     }));
     const ids = nearby(target, links).filter((id) => built.some((node) => node.id === id));
     framed = (ids.length ? ids : ["root"]).join(",");
