@@ -1,0 +1,1 @@
+window.degine = window.degine || {};

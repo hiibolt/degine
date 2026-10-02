@@ -1,0 +1,10 @@
+name = "debate"
+version = "0.1.0"
+defaultTargets = ["Debate", "extractor"]
+
+[[lean_lib]]
+name = "Debate"
+
+[[lean_exe]]
+name = "extractor"
+root = "Extractor"

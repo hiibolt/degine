@@ -1,0 +1,11 @@
+[server]
+bind = "127.0.0.1:3000"
+database_url = "host=db.example.supabase.co user=degine_app password=change-me dbname=postgres sslmode=require"
+database_ca = ""
+
+[lean]
+project_dir = "./lean-project"
+helper_path = "./lean-project/.lake/build/bin/extractor"
+
+[auth]
+supabase_url = "https://example.supabase.co"

@@ -1,0 +1,25 @@
+[package]
+name = "degine-backend"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["ws"] }
+chrono = "0.4"
+jsonwebtoken = { version = "11.1.0", features = ["rust_crypto"] }
+postgres = { version = "0.19.14", features = ["with-serde_json-1", "with-chrono-0_4"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+rustls = { version = "0.23.45", features = ["ring"] }
+rustls-native-certs = "0.8.4"
+rustls-pemfile = "2.2.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+tokio-postgres-rustls = "0.14.0"
+toml = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+webpki-roots = "1.0.9"

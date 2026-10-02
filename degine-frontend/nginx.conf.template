@@ -1,0 +1,32 @@
+events {
+  worker_connections 128;
+}
+
+http {
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  sendfile on;
+
+  server {
+    listen 80;
+
+    location /ws {
+      proxy_pass ${BACKEND_URL};
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    }
+
+    location ~ ^/(me|facts|rules|labels|asserts|comments|inbox) {
+      proxy_pass ${BACKEND_URL};
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+    }
+
+    location / {
+      root /usr/share/nginx/html;
+      try_files $uri $uri/ /index.html;
+    }
+  }
+}
