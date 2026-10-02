@@ -58,33 +58,7 @@ impl Db {
             owner: Arc::new(Mutex::new(None)),
             emails: Arc::new(Mutex::new(HashMap::new())),
         };
-        if let Err(err) = db.ensure_people() {
-            eprintln!("people tables were not prepared: {err:#}");
-        }
         Ok(db)
-    }
-
-    fn ensure_people(&self) -> Result<()> {
-        self.hop(|db| {
-            let mut conn = db.lock()?;
-            conn.batch_execute(
-                "CREATE TABLE IF NOT EXISTS public.people (
-                    id text PRIMARY KEY,
-                    name text NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS public.personal_facts (
-                    id text PRIMARY KEY,
-                    claim text NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS public.person_toggles (
-                    person_id text NOT NULL REFERENCES public.people(id) ON DELETE CASCADE,
-                    fact_id text NOT NULL REFERENCES public.personal_facts(id) ON DELETE CASCADE,
-                    PRIMARY KEY (person_id, fact_id)
-                );",
-            )
-            .context("failed to prepare people tables")?;
-            Ok(())
-        })
     }
 
     fn cached_owner(&self) -> Option<String> {
@@ -288,7 +262,10 @@ impl Db {
     pub fn list_labels(&self) -> Result<std::collections::BTreeMap<String, String>> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            let rows = conn.query("SELECT id, title FROM labels ORDER BY id", &[])?;
+            let rows = conn.query(
+                "SELECT id, title FROM labels WHERE id NOT LIKE '~%' ORDER BY id",
+                &[],
+            )?;
             let mut labels = std::collections::BTreeMap::new();
             for row in rows {
                 labels.insert(row.get(0), row.get(1));
@@ -315,19 +292,38 @@ impl Db {
         })
     }
 
+    fn put_label(conn: &mut Client, id: &str, title: &str) -> Result<()> {
+        conn.execute(
+            "INSERT INTO labels (id, title) VALUES ($1, $2)
+             ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title",
+            &[&id, &title],
+        )
+        .with_context(|| format!("failed to write label `{id}`"))?;
+        Ok(())
+    }
+
     pub fn list_people(&self) -> Result<Vec<Person>> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            let rows = conn.query("SELECT id, name FROM public.people ORDER BY name", &[])?;
-            let toggles = conn.query("SELECT person_id, fact_id FROM public.person_toggles", &[])?;
+            let rows = conn.query(
+                "SELECT id, title FROM labels WHERE id LIKE '~person:%' ORDER BY title",
+                &[],
+            )?;
+            let toggles = conn.query("SELECT id FROM labels WHERE id LIKE '~on:%'", &[])?;
             let mut on: HashMap<String, Vec<String>> = HashMap::new();
             for row in toggles {
-                on.entry(row.get(0)).or_default().push(row.get(1));
+                let id: String = row.get(0);
+                let mut parts = id.splitn(3, ':');
+                let _ = parts.next();
+                let Some(person) = parts.next() else { continue };
+                let Some(fact) = parts.next() else { continue };
+                on.entry(person.to_string()).or_default().push(fact.to_string());
             }
             Ok(rows
                 .into_iter()
                 .map(|row| {
-                    let id: String = row.get(0);
+                    let raw: String = row.get(0);
+                    let id = raw.trim_start_matches("~person:").to_string();
                     Person {
                         on: on.remove(&id).unwrap_or_default(),
                         id,
@@ -341,9 +337,7 @@ impl Db {
     pub fn insert_person(&self, id: &str, name: &str) -> Result<()> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            conn.execute("INSERT INTO public.people (id, name) VALUES ($1, $2)", &[&id, &name])
-                .context("failed to add a person")?;
-            Ok(())
+            Self::put_label(&mut conn, &format!("~person:{id}"), name)
         })
     }
 
@@ -351,7 +345,10 @@ impl Db {
         self.hop(|db| {
             let mut conn = db.lock()?;
             let n = conn
-                .execute("DELETE FROM public.people WHERE id = $1", &[&id])
+                .execute("DELETE FROM labels WHERE id = $1 OR id LIKE $2", &[
+                    &format!("~person:{id}"),
+                    &format!("~on:{id}:%"),
+                ])
                 .context("failed to delete a person")?;
             Ok(n > 0)
         })
@@ -360,12 +357,18 @@ impl Db {
     pub fn list_personal_facts(&self) -> Result<Vec<PersonalFact>> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            let rows = conn.query("SELECT id, claim FROM public.personal_facts ORDER BY claim", &[])?;
+            let rows = conn.query(
+                "SELECT id, title FROM labels WHERE id LIKE '~pfact:%' ORDER BY title",
+                &[],
+            )?;
             Ok(rows
                 .into_iter()
-                .map(|row| PersonalFact {
-                    id: row.get(0),
-                    claim: row.get(1),
+                .map(|row| {
+                    let raw: String = row.get(0);
+                    PersonalFact {
+                        id: raw.trim_start_matches("~pfact:").to_string(),
+                        claim: row.get(1),
+                    }
                 })
                 .collect())
         })
@@ -374,12 +377,7 @@ impl Db {
     pub fn insert_personal_fact(&self, id: &str, claim: &str) -> Result<()> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            conn.execute(
-                "INSERT INTO public.personal_facts (id, claim) VALUES ($1, $2)",
-                &[&id, &claim],
-            )
-            .context("failed to add a personal fact")?;
-            Ok(())
+            Self::put_label(&mut conn, &format!("~pfact:{id}"), claim)
         })
     }
 
@@ -387,7 +385,10 @@ impl Db {
         self.hop(|db| {
             let mut conn = db.lock()?;
             let n = conn
-                .execute("DELETE FROM public.personal_facts WHERE id = $1", &[&id])
+                .execute("DELETE FROM labels WHERE id = $1 OR id LIKE $2", &[
+                    &format!("~pfact:{id}"),
+                    &format!("~on:%:{id}"),
+                ])
                 .context("failed to delete a personal fact")?;
             Ok(n > 0)
         })
@@ -396,19 +397,13 @@ impl Db {
     pub fn set_toggle(&self, person: &str, fact: &str, on: bool) -> Result<()> {
         self.hop(|db| {
             let mut conn = db.lock()?;
+            let id = format!("~on:{person}:{fact}");
             if on {
-                conn.execute(
-                    "INSERT INTO public.person_toggles (person_id, fact_id) VALUES ($1, $2)
-                     ON CONFLICT DO NOTHING",
-                    &[&person, &fact],
-                )
+                Self::put_label(&mut conn, &id, "on")?;
             } else {
-                conn.execute(
-                    "DELETE FROM public.person_toggles WHERE person_id = $1 AND fact_id = $2",
-                    &[&person, &fact],
-                )
+                conn.execute("DELETE FROM labels WHERE id = $1", &[&id])
+                    .context("failed to set a personal fact")?;
             }
-            .context("failed to set a personal fact")?;
             Ok(())
         })
     }
