@@ -12,6 +12,7 @@ use crate::model::{Assert, Comment, Fact, Rule};
 #[derive(Clone)]
 pub struct Db {
     inner: Arc<Mutex<Client>>,
+    owner: Arc<Mutex<Option<String>>>,
 }
 
 pub struct GraphRecord {
@@ -44,7 +45,18 @@ impl Db {
         let client = Client::connect(url, connector).context("failed to open the database")?;
         Ok(Self {
             inner: Arc::new(Mutex::new(client)),
+            owner: Arc::new(Mutex::new(None)),
         })
+    }
+
+    fn cached_owner(&self) -> Option<String> {
+        self.owner.lock().ok().and_then(|guard| guard.clone())
+    }
+
+    fn remember_owner(&self, user_id: &str) {
+        if let Ok(mut guard) = self.owner.lock() {
+            *guard = Some(user_id.to_string());
+        }
     }
 
     fn hop<T: Send>(&self, f: impl FnOnce(&Db) -> Result<T> + Send) -> Result<T> {
@@ -653,6 +665,18 @@ impl Db {
     }
 
     pub fn claim_owner(&self, user_id: &str) -> Result<()> {
+        if self.cached_owner().as_deref() == Some(user_id) {
+            return Ok(());
+        }
+        {
+            let gate = self
+                .owner
+                .lock()
+                .map_err(|_| anyhow::anyhow!("database lock poisoned"))?;
+            if gate.as_deref() == Some(user_id) {
+                return Ok(());
+            }
+        }
         self.hop(|db| {
             let mut conn = db.lock()?;
             conn.execute(
@@ -661,11 +685,16 @@ impl Db {
             )
             .context("failed to record the library owner")?;
             Ok(())
-        })
+        })?;
+        self.remember_owner(user_id);
+        Ok(())
     }
 
     pub fn is_owner_id(&self, user_id: &str) -> Result<bool> {
-        self.hop(|db| {
+        if let Some(owner) = self.cached_owner() {
+            return Ok(owner == user_id);
+        }
+        let stored = self.hop(|db| {
             let mut conn = db.lock()?;
             let stored: Option<String> = conn
                 .query_opt(
@@ -673,8 +702,12 @@ impl Db {
                     &[],
                 )?
                 .map(|row| row.get(0));
-            Ok(stored.as_deref() == Some(user_id))
-        })
+            Ok(stored)
+        })?;
+        if let Some(owner) = &stored {
+            self.remember_owner(owner);
+        }
+        Ok(stored.as_deref() == Some(user_id))
     }
 }
 
@@ -744,8 +777,18 @@ fn citations_for(conn: &mut Client, fact_id: &str) -> Result<Vec<String>> {
 }
 
 fn attach_citations(conn: &mut Client, facts: &mut [Fact]) -> Result<()> {
-    for fact in facts {
-        fact.citations = citations_for(conn, &fact.id)?;
+    let rows = conn.query(
+        "SELECT fact_id, reference FROM fact_citations ORDER BY fact_id, position",
+        &[],
+    )?;
+    let mut by_id: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for row in rows {
+        by_id.entry(row.get(0)).or_default().push(row.get(1));
+    }
+    for fact in facts.iter_mut() {
+        if let Some(citations) = by_id.remove(&fact.id) {
+            fact.citations = citations;
+        }
     }
     Ok(())
 }
