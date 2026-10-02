@@ -58,7 +58,9 @@ impl Db {
             owner: Arc::new(Mutex::new(None)),
             emails: Arc::new(Mutex::new(HashMap::new())),
         };
-        db.ensure_people()?;
+        if let Err(err) = db.ensure_people() {
+            eprintln!("people tables were not prepared: {err:#}");
+        }
         Ok(db)
     }
 
@@ -66,17 +68,17 @@ impl Db {
         self.hop(|db| {
             let mut conn = db.lock()?;
             conn.batch_execute(
-                "CREATE TABLE IF NOT EXISTS people (
+                "CREATE TABLE IF NOT EXISTS public.people (
                     id text PRIMARY KEY,
                     name text NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS personal_facts (
+                CREATE TABLE IF NOT EXISTS public.personal_facts (
                     id text PRIMARY KEY,
                     claim text NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS person_toggles (
-                    person_id text NOT NULL REFERENCES people(id) ON DELETE CASCADE,
-                    fact_id text NOT NULL REFERENCES personal_facts(id) ON DELETE CASCADE,
+                CREATE TABLE IF NOT EXISTS public.person_toggles (
+                    person_id text NOT NULL REFERENCES public.people(id) ON DELETE CASCADE,
+                    fact_id text NOT NULL REFERENCES public.personal_facts(id) ON DELETE CASCADE,
                     PRIMARY KEY (person_id, fact_id)
                 );",
             )
@@ -316,8 +318,8 @@ impl Db {
     pub fn list_people(&self) -> Result<Vec<Person>> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            let rows = conn.query("SELECT id, name FROM people ORDER BY name", &[])?;
-            let toggles = conn.query("SELECT person_id, fact_id FROM person_toggles", &[])?;
+            let rows = conn.query("SELECT id, name FROM public.people ORDER BY name", &[])?;
+            let toggles = conn.query("SELECT person_id, fact_id FROM public.person_toggles", &[])?;
             let mut on: HashMap<String, Vec<String>> = HashMap::new();
             for row in toggles {
                 on.entry(row.get(0)).or_default().push(row.get(1));
@@ -339,7 +341,7 @@ impl Db {
     pub fn insert_person(&self, id: &str, name: &str) -> Result<()> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            conn.execute("INSERT INTO people (id, name) VALUES ($1, $2)", &[&id, &name])
+            conn.execute("INSERT INTO public.people (id, name) VALUES ($1, $2)", &[&id, &name])
                 .context("failed to add a person")?;
             Ok(())
         })
@@ -349,7 +351,7 @@ impl Db {
         self.hop(|db| {
             let mut conn = db.lock()?;
             let n = conn
-                .execute("DELETE FROM people WHERE id = $1", &[&id])
+                .execute("DELETE FROM public.people WHERE id = $1", &[&id])
                 .context("failed to delete a person")?;
             Ok(n > 0)
         })
@@ -358,7 +360,7 @@ impl Db {
     pub fn list_personal_facts(&self) -> Result<Vec<PersonalFact>> {
         self.hop(|db| {
             let mut conn = db.lock()?;
-            let rows = conn.query("SELECT id, claim FROM personal_facts ORDER BY claim", &[])?;
+            let rows = conn.query("SELECT id, claim FROM public.personal_facts ORDER BY claim", &[])?;
             Ok(rows
                 .into_iter()
                 .map(|row| PersonalFact {
@@ -373,7 +375,7 @@ impl Db {
         self.hop(|db| {
             let mut conn = db.lock()?;
             conn.execute(
-                "INSERT INTO personal_facts (id, claim) VALUES ($1, $2)",
+                "INSERT INTO public.personal_facts (id, claim) VALUES ($1, $2)",
                 &[&id, &claim],
             )
             .context("failed to add a personal fact")?;
@@ -385,7 +387,7 @@ impl Db {
         self.hop(|db| {
             let mut conn = db.lock()?;
             let n = conn
-                .execute("DELETE FROM personal_facts WHERE id = $1", &[&id])
+                .execute("DELETE FROM public.personal_facts WHERE id = $1", &[&id])
                 .context("failed to delete a personal fact")?;
             Ok(n > 0)
         })
@@ -396,13 +398,13 @@ impl Db {
             let mut conn = db.lock()?;
             if on {
                 conn.execute(
-                    "INSERT INTO person_toggles (person_id, fact_id) VALUES ($1, $2)
+                    "INSERT INTO public.person_toggles (person_id, fact_id) VALUES ($1, $2)
                      ON CONFLICT DO NOTHING",
                     &[&person, &fact],
                 )
             } else {
                 conn.execute(
-                    "DELETE FROM person_toggles WHERE person_id = $1 AND fact_id = $2",
+                    "DELETE FROM public.person_toggles WHERE person_id = $1 AND fact_id = $2",
                     &[&person, &fact],
                 )
             }
