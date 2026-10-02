@@ -1,5 +1,5 @@
 <script>
-  import { api, apiUrl, connectEvents, wsUrl, ApiError } from "./api.js";
+  import { api, connectEvents, ApiError } from "./api.js";
   import { emailForName, rememberName } from "./names.js";
   import { supabase } from "./session.js";
   import { argumentPieces, renderAssert } from "./export.js";
@@ -36,7 +36,7 @@
   let inbox = $state([]);
   let shares = $state([]);
 
-  const configured = Boolean(apiUrl && wsUrl && supabase);
+  const configured = Boolean(supabase);
 
   function handleError(err) {
     if (err instanceof ApiError && err.status === 401 && token) {
