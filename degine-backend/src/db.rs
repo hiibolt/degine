@@ -61,6 +61,24 @@ impl Db {
         {
             let mut conn = db.lock()?;
             schema::migrate(&mut conn)?;
+            let have_stamps: bool = conn
+                .query_opt(
+                    "SELECT 1 FROM information_schema.tables
+                     WHERE table_schema = 'degine' AND table_name = 'build_stamps'",
+                    &[],
+                )?
+                .is_some();
+            if !have_stamps {
+                conn.batch_execute(
+                    "CREATE TABLE degine.build_stamps (
+                        workspace_id text NOT NULL,
+                        target_id text NOT NULL,
+                        stamp text NOT NULL,
+                        PRIMARY KEY (workspace_id, target_id)
+                    )",
+                )
+                .context("failed to remember which proofs are already built")?;
+            }
         }
         Ok(db)
     }
@@ -854,6 +872,51 @@ impl Db {
         })
     }
 
+    pub fn build_stamp(&self, ws: &str, target_id: &str) -> Result<Option<String>> {
+        let ws = ws.to_string();
+        let target_id = target_id.to_string();
+        self.hop(move |db| {
+            let mut conn = db.lock()?;
+            Ok(conn
+                .query_opt(
+                    "SELECT stamp FROM degine.build_stamps WHERE workspace_id = $1 AND target_id = $2",
+                    &[&ws, &target_id],
+                )?
+                .map(|row| row.get(0)))
+        })
+    }
+
+    pub fn put_build_stamp(&self, ws: &str, target_id: &str, stamp: &str) -> Result<()> {
+        let ws = ws.to_string();
+        let target_id = target_id.to_string();
+        let stamp = stamp.to_string();
+        self.hop(move |db| {
+            db.lock()?.execute(
+                "INSERT INTO degine.build_stamps (workspace_id, target_id, stamp) VALUES ($1, $2, $3)
+                 ON CONFLICT (workspace_id, target_id) DO UPDATE SET stamp = excluded.stamp",
+                &[&ws, &target_id, &stamp],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn saved_graph(&self, ws: &str, target_id: &str) -> Result<Option<GraphRecord>> {
+        let ws = ws.to_string();
+        let target_id = target_id.to_string();
+        self.hop(move |db| {
+            let mut conn = db.lock()?;
+            if let Some(record) = db.graph_in_conn(&mut conn, &ws, &target_id)? {
+                return Ok(Some(record));
+            }
+            let found = conn.query_opt(
+                "SELECT status, graph_json, diagnostics FROM assert_graphs
+                 WHERE workspace_id = $1 AND assert_id = $2",
+                &[&ws, &target_id],
+            )?;
+            graph_record(found)
+        })
+    }
+
     pub fn mark_compiling(&self, ws: &str, rule_id: &str) -> Result<()> {
         let ws = ws.to_string();
         let rule_id = rule_id.to_string();
@@ -913,6 +976,15 @@ impl Db {
 
     fn graph_in(&self, ws: &str, rule_id: &str) -> Result<Option<GraphRecord>> {
         let mut conn = self.lock()?;
+        self.graph_in_conn(&mut conn, ws, rule_id)
+    }
+
+    fn graph_in_conn(
+        &self,
+        conn: &mut postgres::Client,
+        ws: &str,
+        rule_id: &str,
+    ) -> Result<Option<GraphRecord>> {
         let found = conn.query_opt(
             "SELECT status, graph_json, diagnostics FROM graphs
              WHERE workspace_id = $1 AND rule_id = $2",

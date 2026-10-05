@@ -97,4 +97,8 @@ pub struct JobRequest {
     pub target_rule_id: String,
     /// A person-scoped check. Its result is not saved over the assert graph.
     pub ephemeral: bool,
+    /// Canonical line for this target, shared by the skip check and the saved stamp.
+    pub target_line: String,
+    /// Whole-library stamp. Saved when Lean rejects the claim.
+    pub stamp: String,
 }

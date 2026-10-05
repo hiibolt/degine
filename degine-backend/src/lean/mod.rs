@@ -9,6 +9,7 @@ mod formula;
 mod gaps;
 mod prove;
 mod queue;
+pub(crate) mod stamp;
 
 pub use gaps::missing;
 

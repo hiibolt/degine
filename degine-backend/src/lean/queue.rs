@@ -21,11 +21,13 @@ pub enum LeanEvent {
         workspace_id: String,
         target_rule_id: String,
         graph: DepGraph,
+        stamp: String,
     },
     CompileFailed {
         workspace_id: String,
         target_rule_id: String,
         diagnostics: String,
+        stamp: Option<String>,
     },
 }
 
@@ -65,17 +67,29 @@ impl LeanQueue {
                 }
                 match &result {
                     Ok(LeanOutcome::Proved { graph }) => {
+                        let stamp = crate::lean::stamp::proved_stamp(
+                            graph,
+                            &work.job.facts,
+                            &work.job.rules,
+                            &target,
+                            &work.job.target_line,
+                        )
+                        .unwrap_or_else(|| work.job.stamp.clone());
                         let _ = events_worker.send(LeanEvent::GraphUpdated {
                             workspace_id: workspace_id.clone(),
                             target_rule_id: target,
                             graph: graph.clone(),
+                            stamp,
                         });
                     }
                     Ok(LeanOutcome::Invalid { diagnostics }) => {
+                        let stamp = crate::lean::stamp::stable_invalid(diagnostics)
+                            .then(|| work.job.stamp.clone());
                         let _ = events_worker.send(LeanEvent::CompileFailed {
                             workspace_id,
                             target_rule_id: target,
                             diagnostics: diagnostics.clone(),
+                            stamp,
                         });
                     }
                     Err(err) => {
@@ -83,6 +97,7 @@ impl LeanQueue {
                             workspace_id,
                             target_rule_id: target,
                             diagnostics: format!("{err:#}"),
+                            stamp: None,
                         });
                     }
                 }

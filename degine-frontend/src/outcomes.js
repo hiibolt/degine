@@ -104,7 +104,27 @@ function keyOf(way) {
   return `${[...way.assumes].sort().join(",")}|${steps.join(">")}`;
 }
 
+let cachedKey = "";
+let cachedBoard = [];
+
+function boardKey(facts, labels) {
+  const lines = facts.map((fact) => `${fact.id}|${fact.role}|${fact.formula || ""}|${fact.claim}`);
+  lines.sort();
+  const names = Object.keys(labels || {}).sort();
+  for (const id of names) lines.push(`${id}=${labels[id]}`);
+  return lines.join("\n");
+}
+
 export function outcomeBoard(facts, labels, titleOf) {
+  const key = boardKey(facts, labels);
+  if (key === cachedKey) return cachedBoard;
+  const board = buildBoard(facts, labels, titleOf);
+  cachedKey = key;
+  cachedBoard = board;
+  return board;
+}
+
+function buildBoard(facts, labels, titleOf) {
   const taken = new Set(facts.map((fact) => fact.id));
   const ids = Object.keys(labels || {}).filter((id) => !taken.has(id));
   return ids

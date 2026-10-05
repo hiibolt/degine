@@ -2,3 +2,4 @@ target
 config.toml
 pooler-root.pem
 *.db
+lean-project/Debate/Generated.lean

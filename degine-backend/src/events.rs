@@ -97,6 +97,7 @@ impl From<LeanEvent> for ServerEvent {
                 workspace_id,
                 target_rule_id,
                 graph,
+                stamp: _,
             } => Self::GraphUpdated {
                 workspace_id,
                 target_rule_id,
@@ -106,6 +107,7 @@ impl From<LeanEvent> for ServerEvent {
                 workspace_id,
                 target_rule_id,
                 diagnostics,
+                stamp: _,
             } => Self::CompileFailed {
                 workspace_id,
                 target_rule_id,

@@ -81,6 +81,7 @@
   let assertPeople = $state(readAssertPeople());
   let bag = emptyBag();
   let booted = "";
+  const checking = new Map();
   let latestPresence = null;
   let presenceRoom = null;
   const cursor = { tab: "outcomes", kind: "", item: "", title: "" };
@@ -264,6 +265,10 @@
     return Object.values(map).flat();
   }
 
+  function keep(prev, next) {
+    return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+  }
+
   function show(notify) {
     const view = project(bag, userId);
     if (notify) {
@@ -287,15 +292,15 @@
         else if (next.status === "pending") pushToast(`checking ${item.title}`);
       }
     }
-    facts = view.facts;
-    rules = view.rules;
-    asserts = view.asserts;
-    labels = view.labels;
-    graphs = view.graphs;
-    people = view.people;
-    personal = view.personal;
-    comments = view.comments;
-    members = view.members;
+    facts = keep(facts, view.facts);
+    rules = keep(rules, view.rules);
+    asserts = keep(asserts, view.asserts);
+    labels = keep(labels, view.labels);
+    graphs = keep(graphs, view.graphs);
+    people = keep(people, view.people);
+    personal = keep(personal, view.personal);
+    comments = keep(comments, view.comments);
+    members = keep(members, view.members);
     if (view.workspace) {
       workspaces = workspaces.map((item) =>
         item.id === view.workspace.id
@@ -362,8 +367,13 @@
     });
   }
 
+  function pendingView() {
+    return { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
+  }
+
   async function checkPerson(assertId, person) {
     const fp = inputsOf(assertId, person);
+    const key = `${assertId}\0${person}\0${fp}`;
     const prev = personViews[assertId];
     const fresh = prev?.personId === person && prev.fp === fp;
     const showing = selected?.kind === "assert" && selected.id === assertId;
@@ -371,15 +381,26 @@
       if (showing) personView = prev.view;
       return;
     }
-    if (showing) {
-      personView = { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
+    const running = checking.get(key);
+    if (running) {
+      if (showing && personView?.status !== "pending") personView = pendingView();
+      await running;
+      return;
     }
-    const view = await api(lib(`/asserts/${encodeURIComponent(assertId)}/for/${encodeURIComponent(person)}`), {
+    if (showing) personView = pendingView();
+    const job = api(lib(`/asserts/${encodeURIComponent(assertId)}/for/${encodeURIComponent(person)}`), {
       token,
+    }).then((view) => {
+      personViews = { ...personViews, [assertId]: { personId: person, fp, view } };
+      if (selected?.kind === "assert" && selected.id === assertId && personFor(assertId) === person) {
+        personView = view;
+      }
     });
-    personViews = { ...personViews, [assertId]: { personId: person, fp, view } };
-    if (selected?.kind === "assert" && selected.id === assertId && personFor(assertId) === person) {
-      personView = view;
+    checking.set(key, job);
+    try {
+      await job;
+    } finally {
+      if (checking.get(key) === job) checking.delete(key);
     }
   }
 
@@ -402,10 +423,12 @@
         return;
       }
       if (!id) return;
+      const warm = booted === id;
       bag = await loadLibrary(supabase, id);
       if (mine !== ticket) return;
       booted = id;
       show(false);
+      if (warm) return;
       await Promise.all(
         asserts.map(async (item) => {
           const person = assertPeople[item.id];
@@ -471,10 +494,6 @@
     presenceRoom = room;
     syncCursor();
     room.track(cursorBody());
-    const onFocus = () => {
-      if (alive) reload += 1;
-    };
-    window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
       presenceRoom = null;
@@ -483,7 +502,6 @@
       clearTimeout(trackTimer);
       stop();
       room.stop();
-      window.removeEventListener("focus", onFocus);
     };
   });
 

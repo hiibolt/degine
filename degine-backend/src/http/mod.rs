@@ -321,22 +321,29 @@ fn record_lean(db: &Db, event: &LeanEvent) {
             workspace_id,
             target_rule_id,
             graph,
+            stamp,
         } => {
-            if assert_known(db, workspace_id, target_rule_id) {
+            let saved = if assert_known(db, workspace_id, target_rule_id) {
                 db.record_assert_proved(workspace_id, target_rule_id, graph)
             } else {
                 db.record_proved(workspace_id, target_rule_id, graph)
-            }
+            };
+            saved.and_then(|()| db.put_build_stamp(workspace_id, target_rule_id, stamp))
         }
         LeanEvent::CompileFailed {
             workspace_id,
             target_rule_id,
             diagnostics,
+            stamp,
         } => {
-            if assert_known(db, workspace_id, target_rule_id) {
+            let saved = if assert_known(db, workspace_id, target_rule_id) {
                 db.record_assert_invalid(workspace_id, target_rule_id, diagnostics)
             } else {
                 db.record_invalid(workspace_id, target_rule_id, diagnostics)
+            };
+            match stamp {
+                Some(stamp) => saved.and_then(|()| db.put_build_stamp(workspace_id, target_rule_id, stamp)),
+                None => saved,
             }
         }
         LeanEvent::CompileStarted { .. } => Ok(()),
@@ -376,7 +383,16 @@ fn enqueue_debate(state: &AppState, ws: &str) -> Result<()> {
             .map_err(|_| anyhow::anyhow!("database thread panicked"))?
     })?;
     let (facts, rules, asserts) = loaded;
+    let mut building = 0usize;
+    let mut skipped = 0usize;
     for rule in &rules {
+        let line = crate::lean::stamp::rule_line(rule);
+        let job = stamped_job(ws, facts.clone(), rules.clone(), rule.id.clone(), line, false);
+        if fresh(state, &job)? {
+            skipped += 1;
+            continue;
+        }
+        building += 1;
         state.db.mark_compiling(ws, &rule.id)?;
         publish(
             state,
@@ -385,21 +401,15 @@ fn enqueue_debate(state: &AppState, ws: &str) -> Result<()> {
                 target_rule_id: rule.id.clone(),
             },
         );
-        let job = JobRequest {
-            workspace_id: ws.to_string(),
-            facts: facts.clone(),
-            rules: rules.clone(),
-            target_rule_id: rule.id.clone(),
-            ephemeral: false,
-        };
-        let queue = state.queue.clone();
-        tokio::spawn(async move {
-            if let Err(err) = queue.submit(job).await {
-                tracing::error!("{err:#}");
-            }
-        });
+        spawn_job(state, job);
     }
     for assert in &asserts {
+        let job = assert_job(ws, assert, &facts, &rules);
+        if fresh(state, &job)? {
+            skipped += 1;
+            continue;
+        }
+        building += 1;
         state.db.mark_assert_compiling(ws, &assert.id)?;
         publish(
             state,
@@ -408,15 +418,66 @@ fn enqueue_debate(state: &AppState, ws: &str) -> Result<()> {
                 target_rule_id: assert.id.clone(),
             },
         );
-        let job = assert_job(ws, assert, &facts, &rules);
-        let queue = state.queue.clone();
-        tokio::spawn(async move {
-            if let Err(err) = queue.submit(job).await {
-                tracing::error!("{err:#}");
-            }
-        });
+        spawn_job(state, job);
     }
+    tracing::info!(skipped, building, "lean queue");
     Ok(())
+}
+
+fn spawn_job(state: &AppState, job: JobRequest) {
+    let queue = state.queue.clone();
+    tokio::spawn(async move {
+        if let Err(err) = queue.submit(job).await {
+            tracing::error!("{err:#}");
+        }
+    });
+}
+
+fn fresh(state: &AppState, job: &JobRequest) -> Result<bool> {
+    let Some(saved) = state.db.build_stamp(&job.workspace_id, &job.target_rule_id)? else {
+        return Ok(false);
+    };
+    let Some(record) = state.db.saved_graph(&job.workspace_id, &job.target_rule_id)? else {
+        return Ok(false);
+    };
+    let fresh = match record.status.as_str() {
+        "proved" => record
+            .graph
+            .as_ref()
+            .and_then(|graph| {
+                crate::lean::stamp::proved_stamp(
+                    graph,
+                    &job.facts,
+                    &job.rules,
+                    &job.target_rule_id,
+                    &job.target_line,
+                )
+            })
+            .unwrap_or_else(|| crate::lean::stamp::library_stamp(&job.facts, &job.rules, &job.target_line)),
+        "invalid" => crate::lean::stamp::library_stamp(&job.facts, &job.rules, &job.target_line),
+        _ => return Ok(false),
+    };
+    Ok(saved == fresh)
+}
+
+fn stamped_job(
+    ws: &str,
+    facts: Vec<Fact>,
+    rules: Vec<Rule>,
+    target_rule_id: String,
+    target_line: String,
+    ephemeral: bool,
+) -> JobRequest {
+    let stamp = crate::lean::stamp::library_stamp(&facts, &rules, &target_line);
+    JobRequest {
+        workspace_id: ws.to_string(),
+        facts,
+        rules,
+        target_rule_id,
+        ephemeral,
+        target_line,
+        stamp,
+    }
 }
 
 fn assert_job(ws: &str, assert: &Assert, facts: &[Fact], rules: &[Rule]) -> JobRequest {
@@ -438,13 +499,8 @@ fn assert_job(ws: &str, assert: &Assert, facts: &[Fact], rules: &[Rule]) -> JobR
         premises,
         conclusion: assert.formula.clone(),
     });
-    JobRequest {
-        workspace_id: ws.to_string(),
-        facts: facts.to_vec(),
-        rules,
-        target_rule_id: assert.id.clone(),
-        ephemeral: false,
-    }
+    let target_line = crate::lean::stamp::assert_line(&assert.id, &assert.formula, &assert.assumes);
+    stamped_job(ws, facts, rules, assert.id.clone(), target_line, false)
 }
 
 fn publish(state: &AppState, event: ServerEvent) {
