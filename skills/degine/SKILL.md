@@ -1,18 +1,44 @@
 ---
 name: degine
-description: Use the degine CLI to read and edit a citation-backed argument library. Brainstorm a chain, then write facts, criteria, theorems, and asserts.
+description: Read and edit a degine citation-backed argument library (facts, criteria, theorems, labels, and asserts checked by Lean). Use when the user mentions degine, a claim chain, a proof, or /degine.
+license: MIT
+compatibility: Requires the degine CLI on PATH (cargo install degine), DEGINE_TOKEN, and network access to the degine API.
+metadata:
+  author: hiibolt
+  version: "0.1.0"
 ---
 
 # degine
 
-Arguments are citation-backed claims checked by Lean. Use the `degine` binary in `degine-cli` (`cargo run -p` does not apply; run `cargo run --manifest-path degine-cli/Cargo.toml --`). `DEGINE_TOKEN` is `dg1.<user id>.<secret>` from the account dialog. The user id is the middle segment. `DEGINE_URL` defaults to `https://degine.hiibolt.com`.
+Arguments are citation-backed claims checked by Lean. Use the `degine` binary on PATH. If it is missing, install it with `cargo install degine`. Inside the degine repo, `cargo run --manifest-path degine-cli/Cargo.toml --` runs this checkout. `DEGINE_TOKEN` is `dg1.<user id>.<secret>` from the account dialog. The user id is the middle segment. Do not print the token. `DEGINE_URL` defaults to `https://degine.hiibolt.com`. `DEGINE_WORKSPACE` is the workspace id. Library paths (`/facts`, `/rules`, `/labels`, `/asserts`, `/people`, `/personal-facts`, `/comments`, `/inbox`) are prefixed with `/workspaces/$DEGINE_WORKSPACE`. `/me`, `/account/token`, and `/workspaces` are not.
 
 ```sh
+degine get /workspaces
 degine get /facts
 degine post /facts '{"id":"signed","claim":"the contract was signed","citations":["https://example.com"],"role":"fact"}'
 ```
 
-A JSON body can be an argument or stdin. Non-2xx exits 1. Do not print the token.
+A JSON body can be an argument, `-`, or stdin. Non-2xx exits 1.
+
+## Routes
+
+- `get /me`
+- `get /account/token`, `post /account/token`
+- `get|post /workspaces`, `put|delete /workspaces/{id}`, `post /workspaces/{id}/leave`
+- `get|post /workspaces/{id}/members`, `put|delete /workspaces/{id}/members/{user_id}`
+- `get|post /facts`, `put|delete /facts/{id}`, `post /facts/{id}/derive`
+- `get|post /rules`, `put|delete /rules/{id}`, `get /rules/{id}/graph`
+- `get|put /labels`, `delete /labels/{id}`
+- `get|post /asserts`, `put|delete /asserts/{id}`, `get /asserts/{id}/graph`
+- `get /asserts/{id}/for/{person}`
+- `get|post /people`, `delete /people/{id}`
+- `get|post /personal-facts`, `delete /personal-facts/{id}`
+- `put /people/{person}/toggles/{fact}`
+- `get /comments?target_type=fact&target_id={id}`, `post /comments`
+- `put|delete /comments/{id}`, `post /comments/{id}/resolved`
+- `get /inbox`
+
+A reader can look and comment. An editor can change the library. Only the creator can rename, delete, invite, or change roles. Invites are by username and start as reader.
 
 ## Library
 

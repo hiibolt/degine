@@ -1,0 +1,56 @@
+# crates.io trusted publishing must name this file: cli.yml
+# https://crates.io/crates/degine/settings
+
+name: cli
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "degine-cli/**"
+      - ".github/workflows/cli.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: publish only a new crate version
+        id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' degine-cli/Cargo.toml | head -1)
+          if [ -z "$version" ]; then
+            echo "no version in degine-cli/Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          code=$(curl -sS -A degine-ci -o /tmp/crate-version.json -w '%{http_code}' \
+            "https://crates.io/api/v1/crates/degine/${version}")
+          if [ "$code" = "200" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "degine $version is already on crates.io"
+          elif [ "$code" = "404" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "degine $version is not on crates.io"
+          else
+            echo "crates.io lookup for degine $version returned $code"
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.version.outputs.publish == 'true'
+
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.version.outputs.publish == 'true'
+        id: auth
+
+      - name: publish degine-cli
+        if: steps.version.outputs.publish == 'true'
+        run: cargo publish --locked --manifest-path degine-cli/Cargo.toml
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
