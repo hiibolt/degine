@@ -423,18 +423,10 @@
         return;
       }
       if (!id) return;
-      const warm = booted === id;
       bag = await loadLibrary(supabase, id);
       if (mine !== ticket) return;
       booted = id;
       show(false);
-      if (warm) return;
-      await Promise.all(
-        asserts.map(async (item) => {
-          const person = assertPeople[item.id];
-          if (person) await checkPerson(item.id, person);
-        }),
-      );
     } finally {
       if (mine === ticket) loading = false;
     }
@@ -510,18 +502,6 @@
     paintFaces();
   });
 
-  $effect(() => {
-    if (!token || !workspaceId || selected?.kind !== "assert") return;
-    const person = personFor(selected.id);
-    if (!person) return;
-    const id = selected.id;
-    void facts;
-    void people;
-    void personal;
-    void asserts;
-    checkPerson(id, person).catch(handleError);
-  });
-
   function choose(kind, id) {
     drafting = null;
     selected = { kind, id };
@@ -531,14 +511,10 @@
       if (person) {
         const hit = personViews[id];
         const fp = inputsOf(id, person);
-        personView =
-          hit?.personId === person && hit.fp === fp
-            ? hit.view
-            : { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
+        personView = hit?.personId === person && hit.fp === fp ? hit.view : null;
       } else {
         personView = null;
       }
-      if (person) checkPerson(id, person).catch(handleError);
     }
     syncCursor();
     scheduleTrack(false);

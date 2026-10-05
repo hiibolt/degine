@@ -55,6 +55,7 @@
   let seen = "";
 
   function blurb(formula) {
+    if (!formula) return "";
     const claim = readClaim(formula);
     if (!claim) return formula;
     const left = claim.partIds.map(nameOf).join(claim.join === "or" ? " or " : " and ");
@@ -65,7 +66,6 @@
     const person = assertPeople[assert.id];
     const cached = personViews[assert.id];
     if (person && cached?.personId === person) return cached.view.status;
-    if (person) return "pending";
     return graphs[assert.id]?.status || "pending";
   }
 
