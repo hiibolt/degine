@@ -22,7 +22,9 @@ ENV PATH="/root/.elan/bin:${PATH}"
 WORKDIR /app
 COPY lean-project /app/lean-project
 WORKDIR /app/lean-project
-RUN lake build
+# Debate.Generated is written from the library at runtime. Warm the
+# toolchain and the extractor only. The first proof builds Debate.
+RUN lake build extractor
 WORKDIR /app
 COPY --from=build /src/target/release/degine-backend /app/degine-backend
 COPY entrypoint.sh /app/entrypoint.sh
