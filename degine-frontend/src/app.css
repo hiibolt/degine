@@ -303,9 +303,35 @@ textarea {
 }
 
 .tab {
+  position: relative;
   background: transparent;
   border-color: transparent;
   padding: 0.22rem 0.7rem;
+}
+
+.peer-row {
+  position: absolute;
+  top: -0.28rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 0.12rem;
+  pointer-events: none;
+}
+
+.peer {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  flex: none;
+}
+
+.pick .peers {
+  margin-left: auto;
+  display: flex;
+  gap: 0.12rem;
+  padding-top: 0.28rem;
 }
 
 .tab.on {

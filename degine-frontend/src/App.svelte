@@ -331,14 +331,36 @@
 
   function syncCursor() {
     cursor.tab = tab;
-    const showItem = (tab === "library" || tab === "asserts") && selected;
-    cursor.kind = showItem ? selected.kind : "";
-    cursor.item = showItem ? selected.id : "";
+    cursor.kind = "";
+    cursor.item = "";
     cursor.title = "";
-    if (!showItem) return;
-    if (selected.kind === "assert") cursor.title = asserts.find((item) => item.id === selected.id)?.title || selected.id;
-    else if (selected.kind === "fact") cursor.title = facts.find((item) => item.id === selected.id)?.claim || selected.id;
-    else cursor.title = selected.id;
+    if ((tab === "library" || tab === "asserts") && selected) {
+      cursor.kind = selected.kind;
+      cursor.item = selected.id;
+      if (selected.kind === "assert") cursor.title = asserts.find((item) => item.id === selected.id)?.title || selected.id;
+      else if (selected.kind === "fact") cursor.title = facts.find((item) => item.id === selected.id)?.claim || selected.id;
+      else cursor.title = selected.id;
+      return;
+    }
+    if (!glance) return;
+    if (tab === "outcomes") {
+      cursor.kind = "outcome";
+      cursor.item = glance;
+      cursor.title = labels[glance] || glance;
+    } else if (tab === "people") {
+      cursor.kind = "person";
+      cursor.item = glance;
+      cursor.title = people.find((item) => item.id === glance)?.name || glance;
+    }
+  }
+
+  let glance = $state("");
+
+  function note(id) {
+    if (glance === id) return;
+    glance = id;
+    syncCursor();
+    scheduleTrack(false);
   }
 
   let trackTimer = 0;
@@ -351,6 +373,7 @@
 
   function setTab(next) {
     tab = next;
+    glance = "";
     syncCursor();
     scheduleTrack(false);
   }
@@ -375,7 +398,7 @@
     const fp = inputsOf(assertId, person);
     const key = `${assertId}\0${person}\0${fp}`;
     const prev = personViews[assertId];
-    const fresh = prev?.personId === person && prev.fp === fp;
+    const fresh = prev?.personId === person && prev.fp === fp && prev.view?.status;
     const showing = selected?.kind === "assert" && selected.id === assertId;
     if (fresh) {
       if (showing) personView = prev.view;
@@ -391,6 +414,7 @@
     const job = api(lib(`/asserts/${encodeURIComponent(assertId)}/for/${encodeURIComponent(person)}`), {
       token,
     }).then((view) => {
+      if (!view?.status) return;
       personViews = { ...personViews, [assertId]: { personId: person, fp, view } };
       if (selected?.kind === "assert" && selected.id === assertId && personFor(assertId) === person) {
         personView = view;
@@ -452,40 +476,46 @@
     const here = workspaceId;
     const who = userId;
     let alive = true;
-    const stop = watchLibrary(
-      supabase,
-      here,
-      who,
-      async (table, payload) => {
-        if (!alive || here !== workspaceId || booted !== here) return;
-        applyRealtime(bag, table, payload);
-        if (table === "workspace_members" && payload.eventType !== "DELETE" && payload.new?.user_id) {
-          const id = payload.new.user_id;
-          if (!bag.profiles.some((item) => item.user_id === id)) {
-            const found = await profileNames(supabase, [id]);
-            if (!alive) return;
-            for (const profile of found) {
-              if (!bag.profiles.some((item) => item.user_id === profile.user_id)) bag.profiles.push(profile);
+    let stop = () => {};
+    let room = null;
+    const access = token;
+    supabase.realtime.setAuth(access).then(() => {
+      if (!alive) return;
+      stop = watchLibrary(
+        supabase,
+        here,
+        who,
+        async (table, payload) => {
+          if (!alive || here !== workspaceId || booted !== here) return;
+          applyRealtime(bag, table, payload);
+          if (table === "workspace_members" && payload.eventType !== "DELETE" && payload.new?.user_id) {
+            const id = payload.new.user_id;
+            if (!bag.profiles.some((item) => item.user_id === id)) {
+              const found = await profileNames(supabase, [id]);
+              if (!alive) return;
+              for (const profile of found) {
+                if (!bag.profiles.some((item) => item.user_id === profile.user_id)) bag.profiles.push(profile);
+              }
             }
           }
-        }
-        show(true);
-      },
-      () => {
-        if (alive) reload += 1;
-      },
-      (status) => {
-        if (alive) live = status;
-      },
-    );
-    const room = watchPresence(supabase, here, who, cursorBody, (state) => {
-      if (!alive) return;
-      latestPresence = state;
-      paintFaces();
+          show(true);
+        },
+        () => {
+          if (alive) reload += 1;
+        },
+        (status) => {
+          if (alive) live = status;
+        },
+      );
+      room = watchPresence(supabase, here, who, cursorBody, (state) => {
+        if (!alive) return;
+        latestPresence = state;
+        paintFaces();
+      });
+      presenceRoom = room;
+      syncCursor();
+      room.track(cursorBody());
     });
-    presenceRoom = room;
-    syncCursor();
-    room.track(cursorBody());
     return () => {
       alive = false;
       presenceRoom = null;
@@ -493,7 +523,7 @@
       faces = [];
       clearTimeout(trackTimer);
       stop();
-      room.stop();
+      room?.stop();
     };
   });
 
@@ -908,18 +938,16 @@
       <div class="brand">
         <h1>degine</h1>
         <nav class="tabs">
-          <button class="tab" class:on={tab === "library"} type="button" onclick={() => setTab("library")}>
-            library
-          </button>
-          <button class="tab" class:on={tab === "asserts"} type="button" onclick={() => setTab("asserts")}>
-            asserts
-          </button>
-          <button class="tab" class:on={tab === "outcomes"} type="button" onclick={() => setTab("outcomes")}>
-            outcomes
-          </button>
-          <button class="tab" class:on={tab === "people"} type="button" onclick={() => setTab("people")}>
-            people
-          </button>
+          {#each ["library", "asserts", "outcomes", "people"] as name (name)}
+            <button class="tab" class:on={tab === name} type="button" onclick={() => setTab(name)}>
+              <span class="peer-row">
+                {#each faces.filter((face) => face.tab === name) as face (face.user_id)}
+                  <span class="peer" style:background={face.color} title={face.label}></span>
+                {/each}
+              </span>
+              {name}
+            </button>
+          {/each}
         </nav>
       </div>
       <div class="hint session">
@@ -999,6 +1027,8 @@
           tab = "library";
           choose("fact", id);
         }}
+        onhere={note}
+        looking={faces}
       />
     {:else if tab === "asserts"}
       <Asserts
@@ -1037,6 +1067,7 @@
           tab = "library";
           choose("fact", id);
         }}
+        looking={faces}
       />
     {:else if tab === "people"}
       <People
@@ -1074,6 +1105,8 @@
           else dropLabel(bag, id);
           show(false);
         }}
+        onhere={note}
+        looking={faces}
       />
     {:else}
     <Library
@@ -1100,6 +1133,7 @@
         tab = "asserts";
         choose("assert", id);
       }}
+      looking={faces}
     />
     {/if}
     </div>

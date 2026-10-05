@@ -16,6 +16,8 @@
     canWrite = false,
     onimport,
     onopenFact,
+    onhere = () => {},
+    looking = [],
   } = $props();
 
   let picked = $state("");
@@ -50,6 +52,10 @@
     ),
   );
   const current = $derived(ordered.find((item) => item.id === picked) || ordered[0] || null);
+
+  $effect(() => {
+    onhere(current?.id || "");
+  });
 
   function needed(id) {
     const claims = [
@@ -106,6 +112,11 @@
         >
           <span class="seal-dot {item.ways.some((way) => !way.assumes.length) ? 'proved' : item.ways.length ? 'open' : 'invalid'}"></span>
           <span>{item.title}</span>
+          <span class="peers">
+            {#each looking.filter((face) => face.tab === "outcomes" && face.item === item.id) as face (face.user_id)}
+              <span class="peer" style:background={face.color} title={face.label}></span>
+            {/each}
+          </span>
         </button>
       {/each}
     </div>

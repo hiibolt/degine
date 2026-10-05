@@ -36,6 +36,7 @@
     personViews = {},
     personView = null,
     onperson,
+    looking = [],
   } = $props();
 
   let title = $state("");
@@ -65,7 +66,7 @@
   function assertState(assert) {
     const person = assertPeople[assert.id];
     const cached = personViews[assert.id];
-    if (person && cached?.personId === person) return cached.view.status;
+    if (person && cached?.personId === person && cached.view?.status) return cached.view.status;
     return graphs[assert.id]?.status || "pending";
   }
 
@@ -287,6 +288,11 @@
         >
           <span class="seal-dot {state}"></span>
           <span>{assertTitle(assert)}</span>
+          <span class="peers">
+            {#each looking.filter((face) => face.tab === "asserts" && face.item === assert.id) as face (face.user_id)}
+              <span class="peer" style:background={face.color} title={face.label}></span>
+            {/each}
+          </span>
         </button>
       {/each}
     </div>

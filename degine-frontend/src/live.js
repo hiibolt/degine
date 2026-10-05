@@ -452,15 +452,23 @@ export function facesFrom(state, me, members) {
     if (!id || id === me || !allowed.has(id)) continue;
     const name = names[id] || "someone";
     const tab = meta.tab || "here";
+    const item = meta.item || "";
     let label = tab;
-    if (meta.item && (tab === "library" || tab === "asserts")) {
-      const title = String(meta.title || meta.item);
+    if (item) {
+      const title = String(meta.title || item);
       label = `${tab} · ${title.length > 42 ? `${title.slice(0, 41)}…` : title}`;
     }
     let hue = 0;
     for (const ch of id) hue = (hue * 33 + ch.charCodeAt(0)) % 360;
     const letters = (name.replace(/[^a-z0-9]/gi, "").slice(0, 2) || "?").toLowerCase();
-    faces.push({ user_id: id, initials: letters, label: `${name} · ${label}`, color: `hsl(${hue} 42% 42%)` });
+    faces.push({
+      user_id: id,
+      initials: letters,
+      label: `${name} · ${label}`,
+      color: `hsl(${hue} 42% 42%)`,
+      tab,
+      item,
+    });
   }
   faces.sort((a, b) => a.label.localeCompare(b.label));
   return faces;

@@ -17,6 +17,7 @@
     onsave,
     onremove,
     onchoose,
+    looking = [],
     ondraft,
     oncancel,
     onerror,
@@ -337,6 +338,11 @@
           <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
             <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
             <span>{someone(fact.claim)}</span>
+            <span class="peers">
+              {#each looking.filter((face) => face.tab === "library" && face.item === fact.id) as face (face.user_id)}
+                <span class="peer" style:background={face.color} title={face.label}></span>
+              {/each}
+            </span>
           </button>
         {/each}
       </div>
@@ -355,6 +361,11 @@
           <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
             <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
             <span>{someone(fact.claim)}</span>
+            <span class="peers">
+              {#each looking.filter((face) => face.tab === "library" && face.item === fact.id) as face (face.user_id)}
+                <span class="peer" style:background={face.color} title={face.label}></span>
+              {/each}
+            </span>
           </button>
         {/each}
       </div>
@@ -387,6 +398,11 @@
           <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
             <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
             <span>{someone(fact.claim)}</span>
+            <span class="peers">
+              {#each looking.filter((face) => face.tab === "library" && face.item === fact.id) as face (face.user_id)}
+                <span class="peer" style:background={face.color} title={face.label}></span>
+              {/each}
+            </span>
           </button>
         {/each}
       </div>

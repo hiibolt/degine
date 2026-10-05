@@ -1,8 +1,18 @@
 <script>
   import { fillName } from "./phrases.js";
 
-  let { people = [], personal = [], canWrite = false, onaddPerson, onremovePerson, onaddFact, ontoggle, onerror } =
-    $props();
+  let {
+    people = [],
+    personal = [],
+    canWrite = false,
+    onaddPerson,
+    onremovePerson,
+    onaddFact,
+    ontoggle,
+    onerror,
+    onhere = () => {},
+    looking = [],
+  } = $props();
 
   let personId = $state("");
   let name = $state("");
@@ -13,6 +23,10 @@
   const listedPeople = $derived([...people].sort((a, b) => a.name.localeCompare(b.name)));
   const listedFacts = $derived([...personal].sort((a, b) => a.claim.localeCompare(b.claim)));
   const on = $derived(new Set(person?.on || []));
+
+  $effect(() => {
+    onhere(person?.id || "");
+  });
 
   function slug(value) {
     return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -51,7 +65,12 @@
     <div class="list">
       {#each listedPeople as item (item.id)}
         <button class="pick" class:selected={person?.id === item.id} type="button" onclick={() => (personId = item.id)}>
-          {item.name}
+          <span>{item.name}</span>
+          <span class="peers">
+            {#each looking.filter((face) => face.tab === "people" && face.item === item.id) as face (face.user_id)}
+              <span class="peer" style:background={face.color} title={face.label}></span>
+            {/each}
+          </span>
         </button>
       {/each}
     </div>
