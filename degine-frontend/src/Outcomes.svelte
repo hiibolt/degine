@@ -13,7 +13,7 @@
     people = [],
     personId = "",
     onperson = () => {},
-    owner = false,
+    canWrite = false,
     onimport,
     onopenFact,
   } = $props();
@@ -147,7 +147,7 @@
               >
                 <Icon name="eye" />
               </button>
-              {#if owner}
+              {#if canWrite}
                 <button
                   class="icon"
                   type="button"

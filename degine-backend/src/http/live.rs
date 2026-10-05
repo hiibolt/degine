@@ -5,16 +5,15 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::access::grant_for;
 use crate::error::AppError;
 use crate::events::ServerEvent;
 
-use super::{is_owner, AppState, Authed};
+use super::AppState;
+use super::Authed;
 
 #[derive(Serialize)]
 pub(super) struct MeBody {
     username: String,
-    owner: bool,
 }
 
 #[derive(Serialize)]
@@ -40,14 +39,8 @@ pub(super) async fn reset_token(
     }))
 }
 
-pub(super) async fn me(
-    Authed { id: user_id, email: username }: Authed,
-    State(state): State<AppState>,
-) -> Result<Json<MeBody>, AppError> {
-    Ok(Json(MeBody {
-        username: username.clone(),
-        owner: is_owner(&state, &user_id)?,
-    }))
+pub(super) async fn me(Authed { username, .. }: Authed) -> Result<Json<MeBody>, AppError> {
+    Ok(Json(MeBody { username }))
 }
 
 #[derive(Deserialize)]
@@ -65,50 +58,18 @@ pub(super) async fn ws(
         .verify(&query.token)
         .await
         .map_err(|_| AppError::unauthorized("unauthorized"))?;
-    state.db.claim_owner(&person.id)?;
     let user_id = person.id;
-    let email = person.email;
-    Ok(upgrade.on_upgrade(move |socket| run_socket(socket, state, user_id, email)))
+    Ok(upgrade.on_upgrade(move |socket| run_socket(socket, state, user_id)))
 }
 
-fn guest_sees(
-    state: &AppState,
-    user_id: &str,
-    email: &str,
-    event: &ServerEvent,
-) -> Result<bool, AppError> {
-    if is_owner(state, user_id)? {
+fn can_hear(state: &AppState, user_id: &str, event: &ServerEvent) -> Result<bool, AppError> {
+    if matches!(event, ServerEvent::AccessChanged { .. }) {
         return Ok(true);
     }
-    match event {
-        ServerEvent::FactDeleted { .. }
-        | ServerEvent::AssertDeleted { .. }
-        | ServerEvent::RuleDeleted { .. }
-        | ServerEvent::CommentDeleted { .. }
-        | ServerEvent::AccessChanged => Ok(true),
-        ServerEvent::RuleChanged { .. } => Ok(false),
-        ServerEvent::FactChanged { fact } => {
-            let grant = grant_for(&state.db, email)?;
-            Ok(grant.fact_ids.contains(&fact.id))
-        }
-        ServerEvent::AssertChanged { assert } => {
-            let grant = grant_for(&state.db, email)?;
-            Ok(grant.assert_ids.contains(&assert.id))
-        }
-        ServerEvent::CommentAdded { comment } | ServerEvent::CommentChanged { comment } => {
-            let grant = grant_for(&state.db, email)?;
-            Ok(grant.sees_target(&comment.target_type, &comment.target_id))
-        }
-        ServerEvent::CompileStarted { target_rule_id }
-        | ServerEvent::GraphUpdated { target_rule_id, .. }
-        | ServerEvent::CompileFailed { target_rule_id, .. } => {
-            let grant = grant_for(&state.db, email)?;
-            Ok(grant.assert_ids.contains(target_rule_id))
-        }
-    }
+    state.db.is_member(user_id, event.workspace_id()).map_err(AppError::from)
 }
 
-async fn run_socket(mut socket: WebSocket, state: AppState, user_id: String, email: String) {
+async fn run_socket(mut socket: WebSocket, state: AppState, user_id: String) {
     let mut events = state.events.subscribe();
     loop {
         tokio::select! {
@@ -125,7 +86,7 @@ async fn run_socket(mut socket: WebSocket, state: AppState, user_id: String, ema
             event = events.recv() => {
                 match event {
                     Ok(event) => {
-                        let allow = match guest_sees(&state, &user_id, &email, &event) {
+                        let allow = match can_hear(&state, &user_id, &event) {
                             Ok(allow) => allow,
                             Err(err) => {
                                 tracing::error!("could not filter a websocket event: {err:?}");

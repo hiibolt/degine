@@ -14,13 +14,16 @@ pub use crate::model::JobRequest;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LeanEvent {
     CompileStarted {
+        workspace_id: String,
         target_rule_id: String,
     },
     GraphUpdated {
+        workspace_id: String,
         target_rule_id: String,
         graph: DepGraph,
     },
     CompileFailed {
+        workspace_id: String,
         target_rule_id: String,
         diagnostics: String,
     },
@@ -47,9 +50,11 @@ impl LeanQueue {
         tokio::spawn(async move {
             while let Some(work) = rx.recv().await {
                 let target = work.job.target_rule_id.clone();
+                let workspace_id = work.job.workspace_id.clone();
                 let ephemeral = work.job.ephemeral;
                 if !ephemeral {
                     let _ = events_worker.send(LeanEvent::CompileStarted {
+                        workspace_id: workspace_id.clone(),
                         target_rule_id: target.clone(),
                     });
                 }
@@ -61,18 +66,21 @@ impl LeanQueue {
                 match &result {
                     Ok(LeanOutcome::Proved { graph }) => {
                         let _ = events_worker.send(LeanEvent::GraphUpdated {
+                            workspace_id: workspace_id.clone(),
                             target_rule_id: target,
                             graph: graph.clone(),
                         });
                     }
                     Ok(LeanOutcome::Invalid { diagnostics }) => {
                         let _ = events_worker.send(LeanEvent::CompileFailed {
+                            workspace_id,
                             target_rule_id: target,
                             diagnostics: diagnostics.clone(),
                         });
                     }
                     Err(err) => {
                         let _ = events_worker.send(LeanEvent::CompileFailed {
+                            workspace_id,
                             target_rule_id: target,
                             diagnostics: format!("{err:#}"),
                         });

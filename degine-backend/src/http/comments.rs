@@ -4,11 +4,12 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 
+use crate::access::Scope;
 use crate::error::AppError;
 use crate::events::ServerEvent;
 use crate::model::Comment;
 
-use super::{can_see, clean_text, is_owner, publish, AppState, Authed};
+use super::{clean_text, publish, AppState};
 
 #[derive(Deserialize)]
 pub(super) struct CommentQuery {
@@ -18,15 +19,15 @@ pub(super) struct CommentQuery {
 
 pub(super) async fn list_comments(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    scope: Scope,
     Query(query): Query<CommentQuery>,
 ) -> Result<Json<Vec<Comment>>, AppError> {
     let target_id = query.target_id.trim();
     if target_id.is_empty() {
         return Err(AppError::bad_request("target_id is required"));
     }
-    ensure_comment_target(&state, &user_id, &username, &query.target_type, target_id)?;
-    Ok(Json(state.db.list_comments(&query.target_type, target_id)?))
+    ensure_comment_target(&state, &scope, &query.target_type, target_id)?;
+    Ok(Json(state.db.list_comments(&scope, &query.target_type, target_id)?))
 }
 
 #[derive(Deserialize)]
@@ -38,18 +39,24 @@ pub(super) struct CommentBody {
 
 pub(super) async fn create_comment(
     State(state): State<AppState>,
-    Authed { id: user_id, email: author }: Authed,
+    scope: Scope,
     Json(body): Json<CommentBody>,
 ) -> Result<impl IntoResponse, AppError> {
     let target_id = clean_text(&body.target_id, "target_id")?;
     let text = clean_text(&body.body, "body")?;
-    ensure_comment_target(&state, &user_id, &author, &body.target_type, &target_id)?;
+    ensure_comment_target(&state, &scope, &body.target_type, &target_id)?;
+    let author = if scope.username().is_empty() {
+        scope.email().to_string()
+    } else {
+        scope.username().to_string()
+    };
     let comment = state
         .db
-        .insert_comment(&body.target_type, &target_id, &author, &text)?;
+        .insert_comment(&scope, &body.target_type, &target_id, &author, &text)?;
     publish(
         &state,
         ServerEvent::CommentAdded {
+            workspace_id: scope.ws().to_string(),
             comment: comment.clone(),
         },
     );
@@ -61,24 +68,30 @@ pub(super) struct CommentEdit {
     body: String,
 }
 
+#[derive(Deserialize)]
+pub(super) struct CommentPath {
+    id: i64,
+}
+
 pub(super) async fn update_comment(
     State(state): State<AppState>,
-    Authed { id: _user_id, email: username }: Authed,
-    Path(id): Path<i64>,
+    scope: Scope,
+    Path(CommentPath { id }): Path<CommentPath>,
     Json(body): Json<CommentEdit>,
 ) -> Result<Json<Comment>, AppError> {
-    let existing = state.db.comment(id)?.ok_or_else(AppError::not_found)?;
-    if existing.author != username {
+    let existing = state.db.comment(&scope, id)?.ok_or_else(AppError::not_found)?;
+    if !same_author(&scope, &existing.author) {
         return Err(AppError::forbidden("only the author can edit this"));
     }
     let text = clean_text(&body.body, "body")?;
     let comment = state
         .db
-        .update_comment(id, &text)?
+        .update_comment(&scope, id, &text)?
         .ok_or_else(AppError::not_found)?;
     publish(
         &state,
         ServerEvent::CommentChanged {
+            workspace_id: scope.ws().to_string(),
             comment: comment.clone(),
         },
     );
@@ -87,19 +100,20 @@ pub(super) async fn update_comment(
 
 pub(super) async fn delete_comment(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
-    Path(id): Path<i64>,
+    scope: Scope,
+    Path(CommentPath { id }): Path<CommentPath>,
 ) -> Result<StatusCode, AppError> {
-    let existing = state.db.comment(id)?.ok_or_else(AppError::not_found)?;
-    if existing.author != username && !is_owner(&state, &user_id)? {
-        return Err(AppError::forbidden("only the author or the owner can delete this"));
+    let existing = state.db.comment(&scope, id)?.ok_or_else(AppError::not_found)?;
+    if !same_author(&scope, &existing.author) && !scope.editor() {
+        return Err(AppError::forbidden("only the author or an editor can delete this"));
     }
-    if !state.db.delete_comment(id)? {
+    if !state.db.delete_comment(&scope, id)? {
         return Err(AppError::not_found());
     }
     publish(
         &state,
         ServerEvent::CommentDeleted {
+            workspace_id: scope.ws().to_string(),
             id,
             target_type: existing.target_type,
             target_id: existing.target_id,
@@ -115,21 +129,22 @@ pub(super) struct ResolvedBody {
 
 pub(super) async fn resolve_comment(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
-    Path(id): Path<i64>,
+    scope: Scope,
+    Path(CommentPath { id }): Path<CommentPath>,
     Json(body): Json<ResolvedBody>,
 ) -> Result<Json<Comment>, AppError> {
-    let existing = state.db.comment(id)?.ok_or_else(AppError::not_found)?;
-    if existing.author != username && !is_owner(&state, &user_id)? {
-        return Err(AppError::forbidden("only the author or the owner can resolve this"));
+    let existing = state.db.comment(&scope, id)?.ok_or_else(AppError::not_found)?;
+    if !same_author(&scope, &existing.author) && !scope.editor() {
+        return Err(AppError::forbidden("only the author or an editor can resolve this"));
     }
     let comment = state
         .db
-        .set_comment_resolved(id, body.resolved)?
+        .set_comment_resolved(&scope, id, body.resolved)?
         .ok_or_else(AppError::not_found)?;
     publish(
         &state,
         ServerEvent::CommentChanged {
+            workspace_id: scope.ws().to_string(),
             comment: comment.clone(),
         },
     );
@@ -138,24 +153,24 @@ pub(super) async fn resolve_comment(
 
 pub(super) async fn inbox(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    scope: Scope,
 ) -> Result<Json<Vec<Comment>>, AppError> {
-    let mut visible = Vec::new();
-    for comment in state.db.list_open_comments()? {
-        if comment.author == username {
-            continue;
-        }
-        if can_see(&state, &user_id, &username, &comment.target_type, &comment.target_id)? {
-            visible.push(comment);
-        }
-    }
+    let visible = state
+        .db
+        .list_open_comments(&scope)?
+        .into_iter()
+        .filter(|comment| !same_author(&scope, &comment.author))
+        .collect();
     Ok(Json(visible))
+}
+
+fn same_author(scope: &Scope, author: &str) -> bool {
+    author == scope.username() || author == scope.email()
 }
 
 fn ensure_comment_target(
     state: &AppState,
-    user_id: &str,
-    username: &str,
+    scope: &Scope,
     target_type: &str,
     target_id: &str,
 ) -> Result<(), AppError> {
@@ -168,12 +183,12 @@ fn ensure_comment_target(
         }
     }
     let exists = match target_type {
-        "fact" => state.db.fact(target_id)?.is_some(),
-        "assert" => state.db.get_assert(target_id)?.is_some(),
-        "rule" | "conclusion" => state.db.rule(target_id)?.is_some(),
+        "fact" => state.db.fact(scope, target_id)?.is_some(),
+        "assert" => state.db.get_assert(scope, target_id)?.is_some(),
+        "rule" | "conclusion" => state.db.rule(scope, target_id)?.is_some(),
         _ => false,
     };
-    if !exists || !can_see(state, user_id, username, target_type, target_id)? {
+    if !exists {
         return Err(AppError::not_found());
     }
     Ok(())

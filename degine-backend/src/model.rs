@@ -72,9 +72,26 @@ pub struct PersonalFact {
     pub claim: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    pub creator: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Member {
+    pub user_id: String,
+    pub username: Option<String>,
+    pub role: String,
+    pub creator: bool,
+}
+
 /// One snapshot of a debate, checked as a single Lean job.
 #[derive(Debug, Clone)]
 pub struct JobRequest {
+    pub workspace_id: String,
     pub facts: Vec<Fact>,
     pub rules: Vec<Rule>,
     pub target_rule_id: String,

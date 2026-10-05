@@ -6,37 +6,21 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 
-use crate::access::grant_for;
+use crate::access::{Editor, Scope};
 use crate::error::AppError;
 use crate::events::ServerEvent;
 use crate::model::Fact;
 
 use super::{
-    blank_to_none, clean_citations, clean_text, enqueue_debate, is_owner, publish, require_id,
-    require_owner, AppState, Authed, FactView,
+    blank_to_none, clean_citations, clean_text, enqueue_debate, publish, require_id, AppState,
+    IdPath,
 };
 
 pub(super) async fn list_facts(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
-) -> Result<Json<Vec<FactView>>, AppError> {
-    let facts = state.db.list_facts()?;
-    if is_owner(&state, &user_id)? {
-        return Ok(Json(
-            facts
-                .into_iter()
-                .map(|fact| FactView { fact, shared: false })
-                .collect(),
-        ));
-    }
-    let grant = grant_for(&state.db, &username)?;
-    Ok(Json(
-        facts
-            .into_iter()
-            .filter(|fact| grant.fact_ids.contains(&fact.id))
-            .map(|fact| FactView { fact, shared: true })
-            .collect(),
-    ))
+    scope: Scope,
+) -> Result<Json<Vec<Fact>>, AppError> {
+    Ok(Json(state.db.list_facts(&scope)?))
 }
 
 #[derive(Deserialize)]
@@ -57,41 +41,53 @@ pub(super) struct NewFact {
 
 pub(super) async fn create_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, email: _username }: Authed,
+    editor: Editor,
     Json(body): Json<NewFact>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_owner(&state, &user_id)?;
     let fact = fact_from(body.id, body.write)?;
-    if state.db.fact(&fact.id)?.is_some() || state.db.rule(&fact.id)?.is_some() {
+    if state.db.fact(&editor, &fact.id)?.is_some() || state.db.rule(&editor, &fact.id)?.is_some() {
         return Err(AppError::conflict(format!("id `{}` is already used", fact.id)));
     }
-    state.db.insert_fact(&fact)?;
-    publish(&state, ServerEvent::FactChanged { fact: fact.clone() });
-    enqueue_debate(&state)?;
-    publish(&state, ServerEvent::AccessChanged);
+    state.db.insert_fact(&editor, &fact)?;
+    let ws = editor.ws().to_string();
+    publish(
+        &state,
+        ServerEvent::FactChanged {
+            workspace_id: ws.clone(),
+            fact: fact.clone(),
+        },
+    );
+    enqueue_debate(&state, &ws)?;
+    publish(&state, ServerEvent::AccessChanged { workspace_id: ws });
     Ok((StatusCode::CREATED, Json(fact)))
 }
 
 pub(super) async fn update_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, email: _username }: Authed,
-    Path(id): Path<String>,
+    editor: Editor,
+    Path(IdPath { id }): Path<IdPath>,
     Json(body): Json<FactWrite>,
 ) -> Result<Json<Fact>, AppError> {
-    require_owner(&state, &user_id)?;
     let fact = fact_from(id, body)?;
-    if state.db.rule(&fact.id)?.is_some() {
+    if state.db.rule(&editor, &fact.id)?.is_some() {
         return Err(AppError::conflict(format!(
             "id `{}` is already used by a rule",
             fact.id
         )));
     }
-    if !state.db.update_fact(&fact)? {
+    if !state.db.update_fact(&editor, &fact)? {
         return Err(AppError::not_found());
     }
-    publish(&state, ServerEvent::FactChanged { fact: fact.clone() });
-    enqueue_debate(&state)?;
-    publish(&state, ServerEvent::AccessChanged);
+    let ws = editor.ws().to_string();
+    publish(
+        &state,
+        ServerEvent::FactChanged {
+            workspace_id: ws.clone(),
+            fact: fact.clone(),
+        },
+    );
+    enqueue_debate(&state, &ws)?;
+    publish(&state, ServerEvent::AccessChanged { workspace_id: ws });
     Ok(Json(fact))
 }
 
@@ -103,22 +99,29 @@ pub(super) struct DeriveBody {
 
 pub(super) async fn derive_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, .. }: Authed,
-    Path(id): Path<String>,
+    editor: Editor,
+    Path(IdPath { id }): Path<IdPath>,
     Json(body): Json<DeriveBody>,
 ) -> Result<Json<Fact>, AppError> {
-    require_owner(&state, &user_id)?;
     require_id(&body.id)?;
     let claim = clean_text(&body.claim, "claim")?;
     if body.id == id {
         return Err(AppError::bad_request("the new fact needs its own id"));
     }
-    match state.db.derive_fact(&id, &body.id, &claim) {
+    match state.db.derive_fact(&editor, &id, &body.id, &claim) {
         Ok(theorem) => {
-            publish(&state, ServerEvent::FactDeleted { id: id.clone() });
+            let ws = editor.ws().to_string();
+            publish(
+                &state,
+                ServerEvent::FactDeleted {
+                    workspace_id: ws.clone(),
+                    id: id.clone(),
+                },
+            );
             publish(
                 &state,
                 ServerEvent::FactChanged {
+                    workspace_id: ws.clone(),
                     fact: Fact {
                         id: body.id,
                         claim: claim.clone(),
@@ -128,8 +131,14 @@ pub(super) async fn derive_fact(
                     },
                 },
             );
-            publish(&state, ServerEvent::FactChanged { fact: theorem.clone() });
-            enqueue_debate(&state)?;
+            publish(
+                &state,
+                ServerEvent::FactChanged {
+                    workspace_id: ws.clone(),
+                    fact: theorem.clone(),
+                },
+            );
+            enqueue_debate(&state, &ws)?;
             Ok(Json(theorem))
         }
         Err(err) => match err.to_string().as_str() {
@@ -143,46 +152,46 @@ pub(super) async fn derive_fact(
 
 pub(super) async fn delete_fact(
     State(state): State<AppState>,
-    Authed { id: user_id, email: _username }: Authed,
-    Path(id): Path<String>,
+    editor: Editor,
+    Path(IdPath { id }): Path<IdPath>,
 ) -> Result<StatusCode, AppError> {
-    require_owner(&state, &user_id)?;
-    if !state.db.delete_fact(&id)? {
+    if !state.db.delete_fact(&editor, &id)? {
         return Err(AppError::not_found());
     }
-    publish(&state, ServerEvent::FactDeleted { id });
-    enqueue_debate(&state)?;
-    publish(&state, ServerEvent::AccessChanged);
+    let ws = editor.ws().to_string();
+    publish(
+        &state,
+        ServerEvent::FactDeleted {
+            workspace_id: ws.clone(),
+            id,
+        },
+    );
+    enqueue_debate(&state, &ws)?;
+    publish(&state, ServerEvent::AccessChanged { workspace_id: ws });
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub(super) async fn list_labels(
     State(state): State<AppState>,
-    Authed { id: user_id, email: username }: Authed,
+    scope: Scope,
 ) -> Result<Json<BTreeMap<String, String>>, AppError> {
-    let labels = state.db.list_labels()?;
-    if is_owner(&state, &user_id)? {
-        return Ok(Json(labels));
-    }
-    let grant = grant_for(&state.db, &username)?;
-    Ok(Json(
-        labels
-            .into_iter()
-            .filter(|(id, _)| grant.atoms.contains(id))
-            .collect(),
-    ))
+    Ok(Json(state.db.list_labels(&scope)?))
 }
 
 pub(super) async fn delete_label(
     State(state): State<AppState>,
-    Authed { id: user_id, email: _username }: Authed,
-    Path(id): Path<String>,
+    editor: Editor,
+    Path(IdPath { id }): Path<IdPath>,
 ) -> Result<StatusCode, AppError> {
-    require_owner(&state, &user_id)?;
     require_id(&id)?;
-    match state.db.delete_label(&id) {
+    match state.db.delete_label(&editor, &id) {
         Ok(Some(())) => {
-            publish(&state, ServerEvent::AccessChanged);
+            publish(
+                &state,
+                ServerEvent::AccessChanged {
+                    workspace_id: editor.ws().to_string(),
+                },
+            );
             Ok(StatusCode::NO_CONTENT)
         }
         Ok(None) => Err(AppError::not_found()),
@@ -195,11 +204,10 @@ pub(super) async fn delete_label(
 
 pub(super) async fn put_labels(
     State(state): State<AppState>,
-    Authed { id: user_id, email: _username }: Authed,
+    editor: Editor,
     Json(body): Json<BTreeMap<String, String>>,
 ) -> Result<StatusCode, AppError> {
-    require_owner(&state, &user_id)?;
-    state.db.upsert_labels(&body)?;
+    state.db.upsert_labels(&editor, &body)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -6,6 +6,7 @@ mod error;
 mod events;
 mod http;
 mod model;
+mod schema;
 
 pub mod lean;
 

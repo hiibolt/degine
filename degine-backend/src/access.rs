@@ -1,83 +1,98 @@
-use std::collections::HashSet;
+//! Who can touch a workspace.
+//!
+//! A library read takes [`Scope`]. A library write takes [`Editor`].
+//! Renaming, deleting, and membership take [`Creator`].
+//! Database methods ask for one of these, so a write cannot be called
+//! with a read scope.
 
-use anyhow::Result;
+use std::ops::Deref;
 
-use crate::db::Db;
-use crate::lean::{formula_atoms, formula_then};
-use crate::model::Fact;
-
-pub struct Grant {
-    pub assert_ids: HashSet<String>,
-    pub fact_ids: HashSet<String>,
-    pub atoms: HashSet<String>,
+#[derive(Clone)]
+pub struct Scope {
+    workspace_id: String,
+    user_id: String,
+    email: String,
+    username: String,
+    editor: bool,
+    creator: bool,
 }
 
-impl Grant {
-    pub fn sees_target(&self, target_type: &str, target_id: &str) -> bool {
-        match target_type {
-            "assert" => self.assert_ids.contains(target_id),
-            "fact" => self.fact_ids.contains(target_id) || self.atoms.contains(target_id),
-            _ => false,
+impl Scope {
+    pub(crate) fn new(
+        workspace_id: String,
+        user_id: String,
+        email: String,
+        username: String,
+        editor: bool,
+        creator: bool,
+    ) -> Self {
+        Self {
+            workspace_id,
+            user_id,
+            email,
+            username,
+            editor,
+            creator,
         }
+    }
+
+    pub fn ws(&self) -> &str {
+        &self.workspace_id
+    }
+
+    pub fn user_id(&self) -> &str {
+        &self.user_id
+    }
+
+    pub fn email(&self) -> &str {
+        &self.email
+    }
+
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn editor(&self) -> bool {
+        self.editor || self.creator
+    }
+
+    pub fn creator(&self) -> bool {
+        self.creator
     }
 }
 
-pub fn grant_for(db: &Db, username: &str) -> Result<Grant> {
-    let facts = db.list_facts()?;
-    let shared = db.shares_for(username)?;
-    let asserts = db.list_asserts()?;
-    let mut atoms = HashSet::new();
-    let mut assert_ids = HashSet::new();
-    for assert in &asserts {
-        if !shared.iter().any(|id| id == &assert.id) {
-            continue;
-        }
-        assert_ids.insert(assert.id.clone());
-        for id in formula_atoms(&assert.formula) {
-            atoms.insert(id);
-        }
+/// Proof that this request may change the library.
+#[derive(Clone)]
+pub struct Editor(Scope);
+
+impl Editor {
+    pub(crate) fn new(scope: Scope) -> Self {
+        Self(scope)
     }
-    let fact_ids = closure(&facts, &mut atoms);
-    Ok(Grant {
-        assert_ids,
-        fact_ids,
-        atoms,
-    })
 }
 
-fn closure(facts: &[Fact], atoms: &mut HashSet<String>) -> HashSet<String> {
-    let mut included = HashSet::new();
-    loop {
-        let mut grew = false;
-        for fact in facts {
-            if included.contains(&fact.id) {
-                continue;
-            }
-            if fact.role != "theorem" {
-                if atoms.contains(&fact.id) {
-                    included.insert(fact.id.clone());
-                    grew = true;
-                }
-                continue;
-            }
-            let Some(formula) = fact.formula.as_deref() else {
-                continue;
-            };
-            let Some(then_id) = formula_then(formula) else {
-                continue;
-            };
-            if !atoms.contains(&then_id) {
-                continue;
-            }
-            included.insert(fact.id.clone());
-            for id in formula_atoms(formula) {
-                atoms.insert(id);
-            }
-            grew = true;
-        }
-        if !grew {
-            break;
-        }
+impl Deref for Editor {
+    type Target = Scope;
+
+    fn deref(&self) -> &Scope {
+        &self.0
     }
-    included
+}
+
+/// Proof that this request is the person who created the workspace.
+#[derive(Clone)]
+pub struct Creator(Editor);
+
+impl Creator {
+    pub(crate) fn new(editor: Editor) -> Self {
+        Self(editor)
+    }
+}
+
+impl Deref for Creator {
+    type Target = Editor;
+
+    fn deref(&self) -> &Editor {
+        &self.0
+    }
 }

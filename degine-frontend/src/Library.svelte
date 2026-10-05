@@ -21,7 +21,7 @@
     oncancel,
     onerror,
     onopenAssert,
-    owner,
+    canWrite,
     username,
     comments,
     oncomment,
@@ -51,11 +51,10 @@
     !drafting && selected?.kind === "fact" ? facts.find((fact) => fact.id === selected.id) : null,
   );
   const listed = $derived({
-    fact: facts.filter((fact) => roleOf(fact) === "fact" && !fact.shared).sort(byTitle),
-    criterion: facts.filter((fact) => roleOf(fact) === "criterion" && !fact.shared).sort(byTitle),
-    theorem: facts.filter((fact) => roleOf(fact) === "theorem" && !fact.shared).sort(byTitle),
+    fact: facts.filter((fact) => roleOf(fact) === "fact").sort(byTitle),
+    criterion: facts.filter((fact) => roleOf(fact) === "criterion").sort(byTitle),
+    theorem: facts.filter((fact) => roleOf(fact) === "theorem").sort(byTitle),
   });
-  const sharedFacts = $derived(facts.filter((fact) => fact.shared).sort(byTitle));
   const thread = $derived(open ? comments[`fact:${open.id}`] || [] : []);
   const theorems = $derived(
     listed.theorem.filter((fact) => fact.claim.toLowerCase().includes(theoremQuery.trim().toLowerCase())),
@@ -63,7 +62,7 @@
 
   $effect(() => {
     if (drafting || open) return;
-    const first = listed.fact[0] || listed.criterion[0] || listed.theorem[0] || sharedFacts[0];
+    const first = listed.fact[0] || listed.criterion[0] || listed.theorem[0];
     if (first) onchoose(first.id);
   });
   const forming = $derived(Boolean(drafting) || editing || deriving);
@@ -324,13 +323,14 @@
 
 <div class="shell">
   <aside class="rail">
-    {#if owner}
     <div class="group">
       <div class="spread">
         <h2 title={notes.fact}>facts</h2>
-        <button class="icon" type="button" aria-label="add" title="add" onclick={() => ondraft("fact")}>
-          <Icon name="plus" />
-        </button>
+        {#if canWrite}
+          <button class="icon" type="button" aria-label="add" title="add" onclick={() => ondraft("fact")}>
+            <Icon name="plus" />
+          </button>
+        {/if}
       </div>
       <div class="list">
         {#each listed.fact as fact (fact.id)}
@@ -344,9 +344,11 @@
     <div class="group">
       <div class="spread">
         <h2 title={notes.criterion}>criteria</h2>
-        <button class="icon" type="button" aria-label="add" title="add" onclick={() => ondraft("criterion")}>
-          <Icon name="plus" />
-        </button>
+        {#if canWrite}
+          <button class="icon" type="button" aria-label="add" title="add" onclick={() => ondraft("criterion")}>
+            <Icon name="plus" />
+          </button>
+        {/if}
       </div>
       <div class="list">
         {#each listed.criterion as fact (fact.id)}
@@ -370,9 +372,11 @@
           >
             <Icon name={searching ? "x" : "search"} />
           </button>
-          <button class="icon" type="button" aria-label="add" title="add" onclick={() => ondraft("theorem")}>
-            <Icon name="plus" />
-          </button>
+          {#if canWrite}
+            <button class="icon" type="button" aria-label="add" title="add" onclick={() => ondraft("theorem")}>
+              <Icon name="plus" />
+            </button>
+          {/if}
         </span>
       </div>
       {#if searching}
@@ -387,20 +391,6 @@
         {/each}
       </div>
     </div>
-    {/if}
-    {#if sharedFacts.length}
-      <details class="group">
-        <summary>shared</summary>
-        <div class="list">
-          {#each sharedFacts as fact (fact.id)}
-            <button class="pick" class:selected={open?.id === fact.id} type="button" onclick={() => onchoose(fact.id)}>
-              <span class="seal-dot {tone(fact) === 'good' ? 'proved' : 'open'}"></span>
-              <span>{someone(fact.claim)}</span>
-            </button>
-          {/each}
-        </div>
-      </details>
-    {/if}
   </aside>
 
   {#if kind}
@@ -409,7 +399,7 @@
       <div class="stage">
         <div class="spread">
           <p class="kicker">{kind}</p>
-          {#if owner}
+          {#if canWrite}
             {#if kind === "fact"}
               <button class="quiet" type="button" onclick={() => (deriving = true)}>make a theorem</button>
             {/if}
@@ -465,7 +455,7 @@
           <Comments
             {thread}
             {username}
-            {owner}
+            {canWrite}
             onadd={(body) => oncomment("fact", open.id, body)}
             onedit={oneditcomment}
             onremove={ondeletecomment}

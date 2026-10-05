@@ -5,7 +5,6 @@
   import Comments from "./Comments.svelte";
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
-  import ShareMenu from "./ShareMenu.svelte";
   import { atomChoices, compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
   import { explainAssert } from "./proof.js";
 
@@ -23,17 +22,14 @@
     oncancel,
     onerror,
     onopenFact,
-    owner,
+    canWrite,
     username,
-    shares,
     comments,
     oncomment,
     oneditcomment,
     ondeletecomment,
     onresolve,
     onexport,
-    onshares,
-    ontoggleShare,
     people = [],
     assertPeople = {},
     personId = "",
@@ -113,12 +109,9 @@
       })
       .sort((a, b) => a.title.localeCompare(b.title)),
   );
-  const mine = $derived(visible.filter((item) => !item.shared));
-  const sharedAsserts = $derived(visible.filter((item) => item.shared));
-
   $effect(() => {
     if (drafting || open) return;
-    const first = mine[0] || sharedAsserts[0];
+    const first = visible[0];
     if (first) onchoose(first.id);
   });
   const thread = $derived(open ? comments[`assert:${open.id}`] || [] : []);
@@ -271,7 +264,7 @@
         >
           <Icon name={searching ? "x" : "search"} />
         </button>
-        {#if owner}
+        {#if canWrite}
           <button class="icon" type="button" aria-label="add" title="add" onclick={oncreate}>
             <Icon name="plus" />
           </button>
@@ -282,7 +275,7 @@
       <input class="finder" placeholder="search" bind:value={query} bind:this={finder} />
     {/if}
     <div class="list">
-      {#each mine as assert (assert.id)}
+      {#each visible as assert (assert.id)}
         {@const state = assertState(assert)}
         <button
           class="pick assert-pick"
@@ -296,23 +289,6 @@
           <span>{assertTitle(assert)}</span>
         </button>
       {/each}
-      {#if sharedAsserts.length}
-        <h3>shared</h3>
-        {#each sharedAsserts as assert (assert.id)}
-          {@const state = assertState(assert)}
-          <button
-            class="pick assert-pick"
-            class:good={state === "proved"}
-            class:selected={open?.id === assert.id}
-            type="button"
-            title={blurb(assert.formula)}
-            onclick={() => onchoose(assert.id)}
-          >
-            <span class="seal-dot {state}"></span>
-            <span>{assertTitle(assert)}</span>
-          </button>
-        {/each}
-      {/if}
     </div>
   </aside>
 
@@ -328,17 +304,10 @@
             {:else if status === "invalid"}rejected
             {:else}checking{/if}
           </span>
-          {#if open}
-            <ShareMenu
-              {owner}
-              {shares}
-              canExport={status === "proved"}
-              onexport={() => onexport(open)}
-              onload={() => onshares(open.id)}
-              ontoggle={(person, on) => ontoggleShare(open.id, person, on)}
-            />
+          {#if open && status === "proved"}
+            <button class="quiet" type="button" onclick={() => onexport(open)}>export</button>
           {/if}
-          {#if owner}
+          {#if canWrite}
             <button class="icon" type="button" aria-label="edit" title="edit" onclick={() => (editing = true)}>
               <Icon name="pencil" />
             </button>
@@ -400,7 +369,7 @@
         <Comments
           {thread}
           {username}
-          {owner}
+          {canWrite}
           onadd={(body) => oncomment("assert", open.id, body)}
           onedit={oneditcomment}
           onremove={ondeletecomment}

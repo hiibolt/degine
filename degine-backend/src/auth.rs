@@ -16,6 +16,7 @@ pub struct Auth {
 pub struct Person {
     pub id: String,
     pub email: String,
+    pub username: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -24,9 +25,15 @@ struct Jwks {
 }
 
 #[derive(Deserialize)]
+struct Meta {
+    username: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct Claims {
     sub: String,
     email: Option<String>,
+    user_metadata: Option<Meta>,
 }
 
 impl Auth {
@@ -61,7 +68,13 @@ impl Auth {
         if id.is_empty() || email.is_empty() || !email.contains('@') {
             return Err(anyhow!("token has no email"));
         }
-        Ok(Person { id, email })
+        let username = data
+            .claims
+            .user_metadata
+            .and_then(|meta| meta.username)
+            .map(|name| name.trim().to_lowercase())
+            .filter(|name| !name.is_empty());
+        Ok(Person { id, email, username })
     }
 
     async fn key(&self, kid: &str) -> Result<Jwk> {

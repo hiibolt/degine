@@ -1,7 +1,7 @@
 <script>
   import { fillName } from "./phrases.js";
 
-  let { people = [], personal = [], owner = false, onaddPerson, onremovePerson, onaddFact, ontoggle, onerror } =
+  let { people = [], personal = [], canWrite = false, onaddPerson, onremovePerson, onaddFact, ontoggle, onerror } =
     $props();
 
   let personId = $state("");
@@ -55,7 +55,7 @@
         </button>
       {/each}
     </div>
-    {#if owner}
+    {#if canWrite}
       <form class="stack add-person" onsubmit={addPerson}>
         <label>name <input bind:value={name} placeholder="name" /></label>
         <button class="primary" type="submit">add person</button>
@@ -66,7 +66,7 @@
     {#if person}
       <div class="spread">
         <h2 class="item-title">{person.name}</h2>
-        {#if owner}
+        {#if canWrite}
           <button class="quiet" type="button" onclick={() => onremovePerson(person.id)}>remove</button>
         {/if}
       </div>
@@ -77,7 +77,7 @@
               <input
                 type="checkbox"
                 checked={on.has(fact.id)}
-                disabled={!owner}
+                disabled={!canWrite}
                 onchange={(event) => ontoggle(person.id, fact.id, event.currentTarget.checked)}
               />
               <span>{fillName(fact.claim, person.name)}</span>
@@ -88,7 +88,7 @@
     {:else}
       <p class="dek">No people yet.</p>
     {/if}
-    {#if owner}
+    {#if canWrite}
       <form class="stack add-fact" onsubmit={addFact}>
         <p class="kicker">new personal fact</p>
         <label>wording, use {'{name}'} <input bind:value={claim} placeholder="{'{name}'} does X" /></label>

@@ -1,7 +1,7 @@
 <script>
   import Icon from "./Icon.svelte";
 
-  let { thread = [], username, owner, onadd, onedit, onremove, onresolve } = $props();
+  let { thread = [], username, canWrite, onadd, onedit, onremove, onresolve } = $props();
 
   let draft = $state("");
   let editingId = $state(null);
@@ -11,7 +11,7 @@
   const archived = $derived(thread.filter((comment) => comment.resolved));
 
   function canDelete(comment) {
-    return comment.author === username || owner;
+    return comment.author === username || canWrite;
   }
 
   async function send(event) {
