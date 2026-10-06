@@ -334,7 +334,9 @@ begin
 end $$;
 
 -- Presence and library changes are private channels. Postgres change rows are
--- still filtered by each table's own policy. Broadcast is not allowed.
+-- still filtered by each table's own policy. Members may send cursor broadcasts.
+-- A private join with no presence listener is authorized by a broadcast read
+-- probe, so members must be allowed to read that extension too.
 -- Do not alter realtime.messages. Policies on it are allowed. An alter is not.
 drop policy if exists degine_realtime_read on realtime.messages;
 drop policy if exists degine_presence_write on realtime.messages;
@@ -342,7 +344,7 @@ drop policy if exists degine_presence_write on realtime.messages;
 create policy degine_realtime_read on realtime.messages
   for select to authenticated
   using (
-    realtime.messages.extension in ('presence', 'postgres_changes')
+    realtime.messages.extension in ('broadcast', 'presence', 'postgres_changes')
     and (select degine_private.is_member(
       substring((select realtime.topic()) from '^(?:library|workspace):([A-Za-z0-9_]+)$')
     ))
@@ -351,7 +353,7 @@ create policy degine_realtime_read on realtime.messages
 create policy degine_presence_write on realtime.messages
   for insert to authenticated
   with check (
-    realtime.messages.extension = 'presence'
+    realtime.messages.extension in ('presence', 'broadcast')
     and (select degine_private.is_member(
       substring((select realtime.topic()) from '^workspace:([A-Za-z0-9_]+)$')
     ))

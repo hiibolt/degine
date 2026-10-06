@@ -423,24 +423,33 @@ export function watchLibrary(supabase, workspaceId, userId, onEvent, onSelf, onS
 
 export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
   const room = supabase.channel(`workspace:${workspaceId}`, {
-    config: { private: true, presence: { key: userId } },
+    config: { private: true, presence: { key: userId }, broadcast: { self: false } },
   });
+  const cursors = {};
   let ready = false;
   let pending = null;
-  room.on("presence", { event: "sync" }, () => onSync(room.presenceState()));
+  const push = () => onSync(room.presenceState(), cursors);
+  room.on("presence", { event: "sync" }, push);
+  room.on("broadcast", { event: "cursor" }, ({ payload }) => {
+    if (!payload?.user_id || payload.user_id === userId) return;
+    cursors[payload.user_id] = payload;
+    push();
+  });
   room.subscribe((status) => {
     if (status !== "SUBSCRIBED") return;
     ready = true;
-    room.track(pending || { ...getBody(), at: Date.now() });
+    // one presence update so a late join sees who is here. moves go out as broadcast.
+    room.track({ ...getBody(), at: Date.now() });
+    if (pending) room.send({ type: "broadcast", event: "cursor", payload: pending });
     pending = null;
   });
   return {
-    track(body) {
+    move(body) {
       if (!ready) {
         pending = body;
         return;
       }
-      return room.track(body);
+      return room.send({ type: "broadcast", event: "cursor", payload: body });
     },
     stop() {
       supabase.removeChannel(room);
@@ -448,7 +457,7 @@ export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
   };
 }
 
-export function facesFrom(state, me, members) {
+export function facesFrom(state, cursors, me, members) {
   if (!state) return [];
   const allowed = new Set(members.map((item) => item.user_id));
   const names = Object.fromEntries(members.map((item) => [item.user_id, item.username]));
@@ -458,14 +467,16 @@ export function facesFrom(state, me, members) {
       (best, item) => ((item.at || 0) >= (best.at || 0) ? item : best),
       metas[0] || {},
     );
-    const id = meta.user_id || key;
+    const cursor = cursors?.[meta.user_id || key];
+    const spot = cursor && (cursor.at || 0) >= (meta.at || 0) ? { ...meta, ...cursor } : meta;
+    const id = spot.user_id || key;
     if (!id || id === me || !allowed.has(id)) continue;
     const name = names[id] || "someone";
-    const tab = meta.tab || "here";
-    const item = meta.item || "";
+    const tab = spot.tab || "here";
+    const item = spot.item || "";
     let label = tab;
     if (item) {
-      const title = String(meta.title || item);
+      const title = String(spot.title || item);
       label = `${tab} · ${title.length > 42 ? `${title.slice(0, 41)}…` : title}`;
     }
     let hue = 0;

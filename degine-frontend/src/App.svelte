@@ -84,6 +84,7 @@
   let booted = "";
   const checking = new Map();
   let latestPresence = null;
+  let latestCursors = {};
   let presenceRoom = null;
   const cursor = { tab: "outcomes", kind: "", item: "", title: "" };
 
@@ -316,7 +317,7 @@
   }
 
   function paintFaces() {
-    faces = facesFrom(latestPresence, userId, members);
+    faces = facesFrom(latestPresence, latestCursors, userId, members);
   }
 
   function cursorBody() {
@@ -376,7 +377,7 @@
       const key = `${body.tab}|${body.kind}|${body.item}`;
       if (!presenceRoom || key === sentCursor) return;
       sentCursor = key;
-      presenceRoom.track(body);
+      presenceRoom.move(body);
     });
   }
 
@@ -518,9 +519,10 @@
           if (alive) live = status;
         },
       );
-      room = watchPresence(supabase, here, who, cursorBody, (state) => {
+      room = watchPresence(supabase, here, who, cursorBody, (state, cursors) => {
         if (!alive) return;
         latestPresence = state;
+        latestCursors = cursors;
         paintFaces();
       });
       presenceRoom = room;
@@ -531,6 +533,7 @@
       alive = false;
       presenceRoom = null;
       latestPresence = null;
+      latestCursors = {};
       faces = [];
       stop();
       room?.stop();
