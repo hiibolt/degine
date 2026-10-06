@@ -402,17 +402,15 @@ export function watchLibrary(supabase, workspaceId, userId, onEvent, onSelf, onS
     { event: "*", schema: "degine", table: "workspaces", filter: `id=eq.${workspaceId}` },
     (payload) => onEvent("workspaces", payload),
   );
-  channel.on(
-    "postgres_changes",
-    { event: "*", schema: "degine", table: "workspace_members", filter: `user_id=eq.${userId}` },
-    () => onSelf(),
-  );
-  channel.subscribe((status) => {
+  // one binding per table. a second workspace_members filter makes the server
+  // reply with a different binding list, and the client then closes the channel.
+  channel.subscribe((status, err) => {
     if (status === "SUBSCRIBED") {
       onStatus("open");
       if (seen) onSelf();
       seen = true;
     } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      if (err) console.warn("library channel", status, err.message || err);
       onStatus("closed");
     } else if (status === "CHANNEL_CONNECTING") {
       onStatus("connecting");

@@ -498,6 +498,9 @@
               }
             }
           }
+          if (table === "workspace_members" && (payload.new?.user_id === who || payload.old?.user_id === who)) {
+            reload += 1;
+          }
           show(true);
         },
         () => {
