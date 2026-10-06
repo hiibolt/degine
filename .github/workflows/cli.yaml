@@ -1,4 +1,4 @@
-# crates.io trusted publishing must name this file: cli.yml
+# crates.io trusted publishing must name this file: cli.yaml
 # https://crates.io/crates/degine/settings
 
 name: cli
@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths:
       - "degine-cli/**"
-      - ".github/workflows/cli.yml"
+      - ".github/workflows/cli.yaml"
 
 permissions:
   contents: read
