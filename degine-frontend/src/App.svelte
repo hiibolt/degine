@@ -26,7 +26,7 @@
     watchPresence,
   } from "./live.js";
   import { argumentPieces, renderAssert } from "./export.js";
-  import { holds, personFacts } from "./outcomes.js";
+  import { holdsForPerson, personFacts } from "./outcomes.js";
   import { downloadText, matchDecl, relevantPieces, renderArgument, shortDiagnostic } from "./prose.js";
   import { pushToast } from "./toast.svelte.js";
   import Icon from "./Icon.svelte";
@@ -77,7 +77,7 @@
   let reload = $state(0);
   let ticket = 0;
   let personal = $state([]);
-  let personId = $state("");
+  let personId = $state(localStorage.getItem("degine.outcomePerson") || "");
   let personView = $state(null);
   let personViews = $state({});
   let assertPeople = $state(readAssertPeople());
@@ -711,7 +711,7 @@
 
   async function exportAssert(item) {
     const person = people.find((entry) => entry.id === personFor(item.id));
-    const local = person ? holds(personFacts(facts, personal, person), item.formula) : null;
+    const local = person ? holdsForPerson(personFacts(facts, personal, person), item.formula) : null;
     const cached = personViews[item.id];
     const record = local
       ? { status: local, graph: null, diagnostics: null }
@@ -1028,6 +1028,8 @@
         {personId}
         onperson={(id) => {
           personId = id;
+          if (id) localStorage.setItem("degine.outcomePerson", id);
+          else localStorage.removeItem("degine.outcomePerson");
           personView = null;
           publishCursor();
         }}

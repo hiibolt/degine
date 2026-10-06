@@ -139,6 +139,12 @@ export function holds(facts, formula) {
   return "invalid";
 }
 
+// A named person does not stay open just because some other criterion could be assumed.
+export function holdsForPerson(facts, formula) {
+  const status = holds(facts, formula);
+  return status === "open" ? "invalid" : status;
+}
+
 export function outcomeBoard(facts, labels, titleOf) {
   const key = boardKey(facts, labels);
   if (key === cachedKey) return cachedBoard;

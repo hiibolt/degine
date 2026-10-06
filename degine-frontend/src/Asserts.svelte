@@ -6,7 +6,7 @@
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
   import { atomChoices, compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
-  import { holds, personFacts } from "./outcomes.js";
+  import { holdsForPerson, personFacts } from "./outcomes.js";
   import { explainAssert } from "./proof.js";
 
   let {
@@ -71,7 +71,7 @@
 
   function forPerson(assert, personId) {
     if (!personId || !assert?.formula) return null;
-    return holds(factsFor(personId), assert.formula);
+    return holdsForPerson(factsFor(personId), assert.formula);
   }
 
   function assertState(assert) {
@@ -323,6 +323,7 @@
           <span class="seal {status}">
             {#if status === "proved"}proved
             {:else if status === "invalid"}rejected
+            {:else if status === "open"}open
             {:else}checking{/if}
           </span>
           {#if open && status === "proved"}
