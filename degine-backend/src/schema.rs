@@ -21,7 +21,9 @@ pub fn migrate(conn: &mut Client) -> Result<()> {
     )?;
     let who: String = row.get(0);
     let owner: String = row.get(1);
-    let mut tx = conn.transaction().context("failed to start the workspace migration")?;
+    let mut tx = conn
+        .transaction()
+        .context("failed to start the workspace migration")?;
     tx.batch_execute(
         "
         CREATE TABLE workspaces (
@@ -45,7 +47,7 @@ pub fn migrate(conn: &mut Client) -> Result<()> {
         ",
     )
     .context(format!(
-        "failed to create workspace tables (connected as {who}, facts owned by {owner}). run degine-backend/sql/workspace_realtime.sql in the supabase sql editor as postgres, then start again"
+        "failed to create workspace tables (connected as {who}, facts owned by {owner}). those tables have to be created as postgres"
     ))?;
 
     let owner: Option<String> = tx
@@ -176,6 +178,7 @@ pub fn migrate(conn: &mut Client) -> Result<()> {
         ",
     )
     .context("failed to scope existing rows to the workspace")?;
-    tx.commit().context("failed to commit the workspace migration")?;
+    tx.commit()
+        .context("failed to commit the workspace migration")?;
     Ok(())
 }
