@@ -423,11 +423,15 @@ export function watchLibrary(supabase, workspaceId, userId, onEvent, onSelf, onS
 
 export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
   const room = supabase.channel(`workspace:${workspaceId}`, {
-    config: { private: true, presence: { key: userId }, broadcast: { self: false, ack: true } },
+    config: { private: true, presence: { key: userId }, broadcast: { self: false } },
   });
   const cursors = {};
   let ready = false;
   let pending = null;
+  const sendCursor = (body) =>
+    room.httpSend("cursor", body).catch((err) => {
+      console.warn("[cursor] broadcast was refused", err.message || err);
+    });
   const push = () => onSync(room.presenceState(), cursors);
   room.on("presence", { event: "sync" }, push);
   room.on("broadcast", { event: "cursor" }, (message) => {
@@ -441,11 +445,7 @@ export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
     ready = true;
     // one presence update so a late join sees who is here. moves go out as broadcast.
     room.track({ ...getBody(), at: Date.now() });
-    if (pending) {
-      room.send({ type: "broadcast", event: "cursor", payload: pending }).then((result) => {
-        if (result !== "ok") console.warn("[cursor] broadcast was refused", result);
-      });
-    }
+    if (pending) sendCursor(pending);
     pending = null;
   });
   return {
@@ -454,10 +454,7 @@ export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
         pending = body;
         return;
       }
-      return room.send({ type: "broadcast", event: "cursor", payload: body }).then((result) => {
-        if (result !== "ok") console.warn("[cursor] broadcast was refused", result);
-        return result;
-      });
+      return sendCursor(body);
     },
     stop() {
       supabase.removeChannel(room);
