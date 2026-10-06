@@ -423,14 +423,15 @@ export function watchLibrary(supabase, workspaceId, userId, onEvent, onSelf, onS
 
 export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
   const room = supabase.channel(`workspace:${workspaceId}`, {
-    config: { private: true, presence: { key: userId }, broadcast: { self: false } },
+    config: { private: true, presence: { key: userId }, broadcast: { self: false, ack: true } },
   });
   const cursors = {};
   let ready = false;
   let pending = null;
   const push = () => onSync(room.presenceState(), cursors);
   room.on("presence", { event: "sync" }, push);
-  room.on("broadcast", { event: "cursor" }, ({ payload }) => {
+  room.on("broadcast", { event: "cursor" }, (message) => {
+    const payload = message?.payload?.user_id ? message.payload : message;
     if (!payload?.user_id || payload.user_id === userId) return;
     cursors[payload.user_id] = payload;
     push();
@@ -440,7 +441,11 @@ export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
     ready = true;
     // one presence update so a late join sees who is here. moves go out as broadcast.
     room.track({ ...getBody(), at: Date.now() });
-    if (pending) room.send({ type: "broadcast", event: "cursor", payload: pending });
+    if (pending) {
+      room.send({ type: "broadcast", event: "cursor", payload: pending }).then((result) => {
+        if (result !== "ok") console.warn("[cursor] broadcast was refused", result);
+      });
+    }
     pending = null;
   });
   return {
@@ -449,7 +454,10 @@ export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
         pending = body;
         return;
       }
-      return room.send({ type: "broadcast", event: "cursor", payload: body });
+      return room.send({ type: "broadcast", event: "cursor", payload: body }).then((result) => {
+        if (result !== "ok") console.warn("[cursor] broadcast was refused", result);
+        return result;
+      });
     },
     stop() {
       supabase.removeChannel(room);
