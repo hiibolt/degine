@@ -192,7 +192,7 @@
     bag = await loadLibrary(supabase, workspaceId);
     show(false);
     selected = { kind: "fact", id: theorem.id };
-    syncCursor();
+    publishCursor();
     return theorem;
   }
 
@@ -360,23 +360,30 @@
   function note(id) {
     if (glance === id) return;
     glance = id;
-    syncCursor();
-    scheduleTrack(false);
+    publishCursor();
   }
 
-  let trackTimer = 0;
-  function scheduleTrack(immediate) {
-    clearTimeout(trackTimer);
-    const send = () => presenceRoom?.track(cursorBody());
-    if (immediate) send();
-    else trackTimer = setTimeout(send, 800);
+  let sentCursor = "";
+  let cursorQueued = false;
+
+  function publishCursor() {
+    syncCursor();
+    if (cursorQueued) return;
+    cursorQueued = true;
+    queueMicrotask(() => {
+      cursorQueued = false;
+      const body = { ...cursorBody(), at: Date.now() };
+      const key = `${body.tab}|${body.kind}|${body.item}`;
+      if (!presenceRoom || key === sentCursor) return;
+      sentCursor = key;
+      presenceRoom.track(body);
+    });
   }
 
   function setTab(next) {
     tab = next;
     glance = "";
-    syncCursor();
-    scheduleTrack(true);
+    publishCursor();
   }
 
   function inputsOf(assertId, personId) {
@@ -517,15 +524,14 @@
         paintFaces();
       });
       presenceRoom = room;
-      syncCursor();
-      room.track(cursorBody());
+      sentCursor = "";
+      publishCursor();
     });
     return () => {
       alive = false;
       presenceRoom = null;
       latestPresence = null;
       faces = [];
-      clearTimeout(trackTimer);
       stop();
       room?.stop();
     };
@@ -550,16 +556,14 @@
         personView = null;
       }
     }
-    syncCursor();
-    scheduleTrack(false);
+    publishCursor();
   }
 
   function startDraft(kind) {
     selected = null;
     drafting = kind;
     error = "";
-    syncCursor();
-    scheduleTrack(false);
+    publishCursor();
   }
 
   async function remember(map) {
@@ -613,8 +617,7 @@
     show(false);
     drafting = null;
     selected = { kind: "rule", id: rule.id };
-    syncCursor();
-    scheduleTrack(false);
+    publishCursor();
   }
 
   async function removeSelected() {
@@ -655,8 +658,7 @@
     show(false);
     drafting = null;
     selected = { kind: "assert", id: item.id };
-    syncCursor();
-    scheduleTrack(false);
+    publishCursor();
   }
 
   async function addComment(targetType, targetId, body) {

@@ -425,12 +425,21 @@ export function watchPresence(supabase, workspaceId, userId, getBody, onSync) {
   const room = supabase.channel(`workspace:${workspaceId}`, {
     config: { private: true, presence: { key: userId } },
   });
+  let ready = false;
+  let pending = null;
   room.on("presence", { event: "sync" }, () => onSync(room.presenceState()));
   room.subscribe((status) => {
-    if (status === "SUBSCRIBED") room.track(getBody());
+    if (status !== "SUBSCRIBED") return;
+    ready = true;
+    room.track(pending || { ...getBody(), at: Date.now() });
+    pending = null;
   });
   return {
     track(body) {
+      if (!ready) {
+        pending = body;
+        return;
+      }
       return room.track(body);
     },
     stop() {
@@ -445,7 +454,10 @@ export function facesFrom(state, me, members) {
   const names = Object.fromEntries(members.map((item) => [item.user_id, item.username]));
   const faces = [];
   for (const [key, metas] of Object.entries(state)) {
-    const meta = metas[metas.length - 1] || {};
+    const meta = metas.reduce(
+      (best, item) => ((item.at || 0) >= (best.at || 0) ? item : best),
+      metas[0] || {},
+    );
     const id = meta.user_id || key;
     if (!id || id === me || !allowed.has(id)) continue;
     const name = names[id] || "someone";
