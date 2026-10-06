@@ -1,5 +1,6 @@
 <script>
   import { api, ApiError } from "./api.js";
+  import { fillName } from "./phrases.js";
   import { supabase } from "./session.js";
   import {
     applyRealtime,
@@ -348,7 +349,9 @@
     if (tab === "outcomes") {
       cursor.kind = "outcome";
       cursor.item = glance;
-      cursor.title = labels[glance] || glance;
+      const who = people.find((item) => item.id === personId)?.name || "";
+      const title = fillName(labels[glance] || glance, who || "someone");
+      cursor.title = who ? `${title} · ${who}` : title;
     } else if (tab === "people") {
       cursor.kind = "person";
       cursor.item = glance;
@@ -1026,6 +1029,7 @@
         onperson={(id) => {
           personId = id;
           personView = null;
+          publishCursor();
         }}
         {canWrite}
         onimport={async (payload) => {

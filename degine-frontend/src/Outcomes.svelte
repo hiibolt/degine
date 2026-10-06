@@ -45,6 +45,12 @@
     return fillName(raw, who);
   }
 
+  // A named person only counts a chain that already holds. Open assumptions stay blue on "someone".
+  function shownWays(item) {
+    if (!person) return item.ways;
+    return item.ways.filter((way) => !way.assumes.length);
+  }
+
   const board = $derived(outcomeBoard(scoped, labels, nameOf));
   const ordered = $derived(
     [...board].sort(
@@ -102,7 +108,7 @@
       {#each ordered as item (item.id)}
         <button
           class="pick"
-          class:good={item.ways.some((way) => !way.assumes.length)}
+          class:good={shownWays(item).some((way) => !way.assumes.length)}
           class:selected={current?.id === item.id}
           type="button"
           onclick={() => {
@@ -110,7 +116,7 @@
             openKey = "";
           }}
         >
-          <span class="seal-dot {item.ways.some((way) => !way.assumes.length) ? 'proved' : item.ways.length ? 'open' : 'invalid'}"></span>
+          <span class="seal-dot {shownWays(item).some((way) => !way.assumes.length) ? 'proved' : shownWays(item).length ? 'open' : 'invalid'}"></span>
           <span>{item.title}</span>
           <span class="peers">
             {#each looking.filter((face) => face.tab === "outcomes" && face.item === item.id) as face (face.user_id)}
@@ -137,10 +143,10 @@
         {/if}
       </div>
       <h2 class="item-title">{current.title}</h2>
-      {#if !current.ways.length}
+      {#if !shownWays(current).length}
         <p class="dek">Nothing reaches this.</p>
       {/if}
-      {#each current.ways as way (way.key)}
+      {#each shownWays(current) as way (way.key)}
         <article class="combo">
           <div class="spread">
             {#if way.assumes.length}
