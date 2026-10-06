@@ -115,6 +115,30 @@ function boardKey(facts, labels) {
   return lines.join("\n");
 }
 
+export function personFacts(facts, personal, person) {
+  const on = new Set(person?.on || []);
+  const extra = (personal || [])
+    .filter((item) => person && on.has(item.id))
+    .map((item) => ({
+      id: item.id,
+      claim: item.claim,
+      role: "fact",
+      formula: null,
+    }));
+  return [...facts, ...extra];
+}
+
+// Proved when a chain reaches the atom with nothing left to assume.
+// Null when the formula is not a single fact, so the caller can fall back.
+export function holds(facts, formula) {
+  const bare = String(formula || "").trim().match(/^fact:([A-Za-z0-9_]+)$/);
+  if (!bare) return null;
+  const ways = waysFrom(bare[1], facts, (id) => id, new Set());
+  if (ways.some((way) => !way.assumes.length)) return "proved";
+  if (ways.length) return "open";
+  return "invalid";
+}
+
 export function outcomeBoard(facts, labels, titleOf) {
   const key = boardKey(facts, labels);
   if (key === cachedKey) return cachedBoard;

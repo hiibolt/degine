@@ -25,6 +25,7 @@
     watchPresence,
   } from "./live.js";
   import { argumentPieces, renderAssert } from "./export.js";
+  import { holds, personFacts } from "./outcomes.js";
   import { downloadText, matchDecl, relevantPieces, renderArgument, shortDiagnostic } from "./prose.js";
   import { pushToast } from "./toast.svelte.js";
   import Icon from "./Icon.svelte";
@@ -368,14 +369,14 @@
     clearTimeout(trackTimer);
     const send = () => presenceRoom?.track(cursorBody());
     if (immediate) send();
-    else trackTimer = setTimeout(send, 6000);
+    else trackTimer = setTimeout(send, 800);
   }
 
   function setTab(next) {
     tab = next;
     glance = "";
     syncCursor();
-    scheduleTrack(false);
+    scheduleTrack(true);
   }
 
   function inputsOf(assertId, personId) {
@@ -638,9 +639,6 @@
     if (existingId) {
       markPending(bag, "assert", existingId);
       show(false);
-      if (personFor(existingId)) {
-        personView = { status: "pending", graph: null, diagnostics: null, missing: [], facts: [] };
-      }
       const item = await api(lib(`/asserts/${encodeURIComponent(existingId)}`), {
         method: "PUT",
         token,
@@ -648,8 +646,6 @@
       });
       putAssert(bag, item);
       show(false);
-      const person = personFor(existingId);
-      if (person) await checkPerson(existingId, person);
       return;
     }
     if (!payload.id) throw new Error("give the title a letter or a number");
@@ -706,9 +702,14 @@
   }
 
   async function exportAssert(item) {
-    const person = personFor(item.id);
+    const person = people.find((entry) => entry.id === personFor(item.id));
+    const local = person ? holds(personFacts(facts, personal, person), item.formula) : null;
     const cached = personViews[item.id];
-    const record = person && cached?.personId === person ? cached.view : graphs[item.id];
+    const record = local
+      ? { status: local, graph: null, diagnostics: null }
+      : person && cached?.personId === person.id
+        ? cached.view
+        : graphs[item.id];
     if (record?.status !== "proved") return;
     busy = true;
     error = "";
@@ -1056,6 +1057,7 @@
         onresolve={resolveComment}
         onexport={exportAssert}
         {people}
+        {personal}
         {assertPeople}
         personId={selected?.kind === "assert" ? personFor(selected.id) : ""}
         {personViews}
@@ -1064,7 +1066,6 @@
           if (selected?.kind !== "assert") return;
           saveAssertPerson(selected.id, id);
           personView = null;
-          if (id) await checkPerson(selected.id, id);
         }}
         onopenFact={(id) => {
           tab = "library";

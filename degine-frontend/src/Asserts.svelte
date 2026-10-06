@@ -6,6 +6,7 @@
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
   import { atomChoices, compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
+  import { holds, personFacts } from "./outcomes.js";
   import { explainAssert } from "./proof.js";
 
   let {
@@ -31,6 +32,7 @@
     onresolve,
     onexport,
     people = [],
+    personal = [],
     assertPeople = {},
     personId = "",
     personViews = {},
@@ -63,11 +65,17 @@
     return `if ${left}, then ${nameOf(claim.thenId)}`;
   }
 
+  function factsFor(personId) {
+    return personFacts(facts, personal, people.find((item) => item.id === personId));
+  }
+
+  function forPerson(assert, personId) {
+    if (!personId || !assert?.formula) return null;
+    return holds(factsFor(personId), assert.formula);
+  }
+
   function assertState(assert) {
-    const person = assertPeople[assert.id];
-    const cached = personViews[assert.id];
-    if (person && cached?.personId === person && cached.view?.status) return cached.view.status;
-    return graphs[assert.id]?.status || "pending";
+    return forPerson(assert, assertPeople[assert.id]) || graphs[assert.id]?.status || "pending";
   }
 
   function assertTitle(assert) {
@@ -88,10 +96,17 @@
     !drafting && selected?.kind === "assert" ? asserts.find((item) => item.id === selected.id) : null,
   );
   const personName = $derived(people.find((item) => item.id === personId)?.name || "");
-  const record = $derived(personId && personView ? personView : open ? graphs[open.id] : null);
-  const viewFacts = $derived(
-    personView?.facts?.length ? [...facts.filter((fact) => !personView.facts.some((item) => item.id === fact.id)), ...personView.facts] : facts,
+  const localStatus = $derived(open ? forPerson(open, personId) : null);
+  const record = $derived(
+    localStatus
+      ? { status: localStatus, graph: null, diagnostics: null, missing: [], facts: [] }
+      : personId && personView
+        ? personView
+        : open
+          ? graphs[open.id]
+          : null,
   );
+  const viewFacts = $derived(personId ? factsFor(personId) : facts);
   const status = $derived(record?.status || (open ? "pending" : ""));
   const titleOf = (id) => nameOf(id);
   const tree = $derived(
