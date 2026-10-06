@@ -64,6 +64,15 @@ pub struct Person {
     pub id: String,
     pub name: String,
     pub on: Vec<String>,
+    /// `{other}` facts that hold. Each entry is one other person.
+    #[serde(default)]
+    pub links: Vec<PersonLink>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonLink {
+    pub fact: String,
+    pub other: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

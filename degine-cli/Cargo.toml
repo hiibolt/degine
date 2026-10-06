@@ -1,6 +1,6 @@
 [package]
 name = "degine"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Command line client for a degine argument library"
 license = "MIT"

@@ -10,7 +10,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::access::{Creator, Editor, Scope};
 use crate::lean::DepGraph;
-use crate::model::{Assert, Comment, Fact, Member, Person, PersonalFact, Rule, Workspace};
+use crate::model::{Assert, Comment, Fact, Member, Person, PersonLink, PersonalFact, Rule, Workspace};
 use crate::schema;
 
 #[derive(Clone)]
@@ -365,6 +365,10 @@ impl Db {
                 "SELECT id FROM labels WHERE workspace_id = $1 AND id LIKE '~on:%'",
                 &[&ws],
             )?;
+            let links = conn.query(
+                "SELECT id FROM labels WHERE workspace_id = $1 AND id LIKE '~with:%'",
+                &[&ws],
+            )?;
             let mut on: HashMap<String, Vec<String>> = HashMap::new();
             for row in toggles {
                 let id: String = row.get(0);
@@ -374,6 +378,22 @@ impl Db {
                 let Some(fact) = parts.next() else { continue };
                 on.entry(person.to_string()).or_default().push(fact.to_string());
             }
+            let mut with: HashMap<String, Vec<PersonLink>> = HashMap::new();
+            for row in links {
+                let id: String = row.get(0);
+                let mut parts = id.splitn(4, ':');
+                let _ = parts.next();
+                let Some(person) = parts.next() else { continue };
+                let Some(fact) = parts.next() else { continue };
+                let Some(other) = parts.next() else { continue };
+                if fact.is_empty() || other.is_empty() {
+                    continue;
+                }
+                with.entry(person.to_string()).or_default().push(PersonLink {
+                    fact: fact.to_string(),
+                    other: other.to_string(),
+                });
+            }
             Ok(rows
                 .into_iter()
                 .map(|row| {
@@ -381,6 +401,7 @@ impl Db {
                     let id = raw.trim_start_matches("~person:").to_string();
                     Person {
                         on: on.remove(&id).unwrap_or_default(),
+                        links: with.remove(&id).unwrap_or_default(),
                         id,
                         name: row.get(1),
                     }
@@ -407,8 +428,17 @@ impl Db {
             let mut conn = db.lock()?;
             let n = conn
                 .execute(
-                    "DELETE FROM labels WHERE workspace_id = $1 AND (id = $2 OR id LIKE $3)",
-                    &[&ws, &format!("~person:{id}"), &format!("~on:{id}:%")],
+                    "DELETE FROM labels WHERE workspace_id = $1 AND (
+                        id = $2 OR id LIKE $3 OR id LIKE $4
+                        OR (id LIKE '~with:%' AND split_part(id, ':', 4) = $5)
+                    )",
+                    &[
+                        &ws,
+                        &format!("~person:{id}"),
+                        &format!("~on:{id}:%"),
+                        &format!("~with:{id}:%"),
+                        &id,
+                    ],
                 )
                 .context("failed to delete a person")?;
             Ok(n > 0)
@@ -455,11 +485,48 @@ impl Db {
             let mut conn = db.lock()?;
             let n = conn
                 .execute(
-                    "DELETE FROM labels WHERE workspace_id = $1 AND (id = $2 OR id LIKE $3)",
-                    &[&ws, &format!("~pfact:{id}"), &format!("~on:%:{id}")],
+                    "DELETE FROM labels WHERE workspace_id = $1 AND (
+                        id = $2 OR id LIKE $3
+                        OR (id LIKE '~with:%' AND split_part(id, ':', 3) = $4)
+                    )",
+                    &[
+                        &ws,
+                        &format!("~pfact:{id}"),
+                        &format!("~on:%:{id}"),
+                        &id,
+                    ],
                 )
                 .context("failed to delete a personal fact")?;
             Ok(n > 0)
+        })
+    }
+
+    pub fn set_link(
+        &self,
+        editor: &Editor,
+        person: &str,
+        fact: &str,
+        other: &str,
+        on: bool,
+    ) -> Result<()> {
+        let ws = editor.ws().to_string();
+        let user = editor.user_id().to_string();
+        let person = person.to_string();
+        let fact = fact.to_string();
+        let other = other.to_string();
+        self.hop(move |db| {
+            let mut conn = db.lock()?;
+            let id = format!("~with:{person}:{fact}:{other}");
+            if on {
+                Self::put_label(&mut conn, &ws, &user, &id, "on")?;
+            } else {
+                conn.execute(
+                    "DELETE FROM labels WHERE workspace_id = $1 AND id = $2",
+                    &[&ws, &id],
+                )
+                .context("failed to set a personal link")?;
+            }
+            Ok(())
         })
     }
 

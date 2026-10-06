@@ -57,6 +57,7 @@ pub(super) async fn create_person(
         id: body.id,
         name,
         on: Vec::new(),
+        links: Vec::new(),
     }))
 }
 
@@ -112,6 +113,42 @@ pub(super) struct CheckPath {
     person: String,
 }
 
+#[derive(Deserialize)]
+pub(super) struct WithPath {
+    person: String,
+    fact: String,
+    other: String,
+}
+
+pub(super) async fn link(
+    State(state): State<AppState>,
+    editor: Editor,
+    Path(WithPath { person, fact, other }): Path<WithPath>,
+    Json(body): Json<ToggleWrite>,
+) -> Result<StatusCode, AppError> {
+    require_id(&person)?;
+    require_id(&fact)?;
+    require_id(&other)?;
+    if person == other {
+        return Err(AppError::bad_request("a person cannot be linked to themself"));
+    }
+    let people = state.db.list_people(&editor)?;
+    if !people.iter().any(|item| item.id == person) || !people.iter().any(|item| item.id == other) {
+        return Err(AppError::not_found());
+    }
+    let catalog = state.db.list_personal_facts(&editor)?;
+    let claim = catalog
+        .iter()
+        .find(|item| item.id == fact)
+        .map(|item| item.claim.as_str())
+        .ok_or_else(AppError::not_found)?;
+    if !claim.contains("{other}") {
+        return Err(AppError::bad_request("that fact is not about another person"));
+    }
+    state.db.set_link(&editor, &person, &fact, &other, body.on)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(super) async fn toggle(
     State(state): State<AppState>,
     editor: Editor,
@@ -133,14 +170,44 @@ pub(super) async fn check_person(
         .ok_or_else(AppError::not_found)?;
     let people = state.db.list_people(&scope)?;
     let person = people
-        .into_iter()
+        .iter()
         .find(|item| item.id == person_id)
+        .cloned()
         .ok_or_else(AppError::not_found)?;
     let catalog = state.db.list_personal_facts(&scope)?;
     let on: HashSet<String> = person.on.iter().cloned().collect();
     let mut facts = state.db.list_facts(&scope)?;
     let mut shown = Vec::new();
     for item in &catalog {
+        if item.claim.contains("{other}") {
+            for other in people.iter().filter(|item| item.id != person.id) {
+                let chosen = person
+                    .links
+                    .iter()
+                    .any(|link| link.fact == item.id && link.other == other.id);
+                if !chosen {
+                    continue;
+                }
+                let id = format!("{}__{}", item.id, other.id);
+                if facts.iter().any(|fact| fact.id == id) {
+                    continue;
+                }
+                let claim = item
+                    .claim
+                    .replace("{name}", &person.name)
+                    .replace("{other}", &other.name);
+                let fact = Fact {
+                    id,
+                    claim,
+                    citations: Vec::new(),
+                    formula: None,
+                    role: "fact".into(),
+                };
+                shown.push(fact.clone());
+                facts.push(fact);
+            }
+            continue;
+        }
         let claim = item.claim.replace("{name}", &person.name);
         if on.contains(&item.id) {
             facts.retain(|fact| fact.id != item.id);

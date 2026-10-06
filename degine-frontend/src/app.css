@@ -772,6 +772,17 @@ button.chip {
   background: #efe7db;
 }
 
+.fact-toggle.rel {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.fact-toggle select {
+  width: auto;
+  font: inherit;
+  padding: 0.16rem 0.4rem;
+}
+
 .fact-toggle input {
   width: 1rem;
   height: 1rem;

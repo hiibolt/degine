@@ -66,7 +66,7 @@
   }
 
   function factsFor(personId) {
-    return personFacts(facts, personal, people.find((item) => item.id === personId));
+    return personFacts(facts, personal, people.find((item) => item.id === personId), people);
   }
 
   function forPerson(assert, personId) {

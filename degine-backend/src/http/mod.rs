@@ -279,6 +279,10 @@ fn router(state: AppState) -> Router {
             put(people::toggle),
         )
         .route(
+            "/workspaces/{workspace_id}/people/{person}/with/{fact}/{other}",
+            put(people::link),
+        )
+        .route(
             "/workspaces/{workspace_id}/comments",
             get(comments::list_comments).post(comments::create_comment),
         )

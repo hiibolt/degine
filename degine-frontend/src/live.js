@@ -291,6 +291,7 @@ export function project(bag, userId) {
   const people = [];
   const personal = [];
   const toggles = new Map();
+  const links = new Map();
   for (const label of bag.labels) {
     if (label.id.startsWith("~assume:")) {
       const rest = label.id.slice("~assume:".length);
@@ -302,7 +303,7 @@ export function project(bag, userId) {
       list.push(factId);
       assumes.set(assertId, list);
     } else if (label.id.startsWith("~person:")) {
-      people.push({ id: label.id.slice("~person:".length), name: label.title, on: [] });
+      people.push({ id: label.id.slice("~person:".length), name: label.title, on: [], links: [] });
     } else if (label.id.startsWith("~pfact:")) {
       personal.push({ id: label.id.slice("~pfact:".length), claim: label.title });
     } else if (label.id.startsWith("~on:")) {
@@ -314,12 +315,21 @@ export function project(bag, userId) {
       const list = toggles.get(person) || [];
       list.push(fact);
       toggles.set(person, list);
+    } else if (label.id.startsWith("~with:")) {
+      const parts = label.id.split(":");
+      if (parts.length !== 4 || !parts[1] || !parts[2] || !parts[3]) continue;
+      const list = links.get(parts[1]) || [];
+      list.push({ fact: parts[2], other: parts[3] });
+      links.set(parts[1], list);
     } else {
       labels[label.id] = label.title;
     }
   }
   people.sort((a, b) => a.name.localeCompare(b.name));
-  for (const person of people) person.on = toggles.get(person.id) || [];
+  for (const person of people) {
+    person.on = toggles.get(person.id) || [];
+    person.links = links.get(person.id) || [];
+  }
   personal.sort((a, b) => a.claim.localeCompare(b.claim));
   const asserts = [...bag.asserts]
     .map((item) => ({

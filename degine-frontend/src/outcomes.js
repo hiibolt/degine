@@ -115,16 +115,39 @@ function boardKey(facts, labels) {
   return lines.join("\n");
 }
 
-export function personFacts(facts, personal, person) {
+export function personFacts(facts, personal, person, people = []) {
   const on = new Set(person?.on || []);
-  const extra = (personal || [])
-    .filter((item) => person && on.has(item.id))
-    .map((item) => ({
-      id: item.id,
-      claim: item.claim,
-      role: "fact",
-      formula: null,
-    }));
+  const links = person?.links || [];
+  const taken = new Set((facts || []).map((fact) => fact.id));
+  const extra = [];
+  for (const item of personal || []) {
+    if (String(item.claim || "").includes("{other}")) {
+      if (!person) continue;
+      for (const other of people) {
+        if (other.id === person.id) continue;
+        const id = `${item.id}__${other.id}`;
+        if (taken.has(id)) continue;
+        const chosen = links.some((link) => link.fact === item.id && link.other === other.id);
+        if (!chosen) continue;
+        taken.add(id);
+        extra.push({
+          id,
+          claim: item.claim.replaceAll("{name}", person.name).replaceAll("{other}", other.name),
+          role: "fact",
+          formula: null,
+        });
+      }
+      continue;
+    }
+    if (person && on.has(item.id) && !taken.has(item.id)) {
+      extra.push({
+        id: item.id,
+        claim: item.claim,
+        role: "fact",
+        formula: null,
+      });
+    }
+  }
   return [...facts, ...extra];
 }
 

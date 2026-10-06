@@ -1,10 +1,19 @@
-export function fillName(text, who = "someone") {
+function fillToken(text, token, who) {
   const name = who || "someone";
   const titled = name.slice(0, 1).toUpperCase() + name.slice(1);
-  return String(text ?? "").replace(/\{name\}/g, (_match, offset, all) => {
+  const pattern = new RegExp(`\\{${token}\\}`, "g");
+  return String(text ?? "").replace(pattern, (_match, offset, all) => {
     const before = all.slice(0, offset);
     return offset === 0 || /[.!?]\s*$/.test(before) ? titled : name;
   });
+}
+
+export function fillName(text, who = "someone") {
+  return fillToken(text, "name", who);
+}
+
+export function fillPeople(text, name = "someone", other = "someone") {
+  return fillToken(fillToken(text, "other", other), "name", name);
 }
 
 export function slug(title) {

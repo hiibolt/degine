@@ -711,7 +711,7 @@
 
   async function exportAssert(item) {
     const person = people.find((entry) => entry.id === personFor(item.id));
-    const local = person ? holdsForPerson(personFacts(facts, personal, person), item.formula) : null;
+    const local = person ? holdsForPerson(personFacts(facts, personal, person, people), item.formula) : null;
     const cached = personViews[item.id];
     const record = local
       ? { status: local, graph: null, diagnostics: null }
@@ -1097,7 +1097,11 @@
         }}
         onremovePerson={async (id) => {
           await api(lib(`/people/${encodeURIComponent(id)}`), { token, method: "DELETE" });
-          dropLabelWhere(bag, (label) => label === `~person:${id}` || label.startsWith(`~on:${id}:`));
+          dropLabelWhere(bag, (label) => {
+            if (label === `~person:${id}` || label.startsWith(`~on:${id}:`) || label.startsWith(`~with:${id}:`)) return true;
+            if (!label.startsWith("~with:")) return false;
+            return label.split(":")[3] === id;
+          });
           if (personId === id) {
             personId = "";
             personView = null;
@@ -1107,6 +1111,17 @@
         onaddFact={async (body) => {
           const fact = await api(lib("/personal-facts"), { token, method: "POST", body });
           putLabel(bag, `~pfact:${fact.id}`, fact.claim);
+          show(false);
+        }}
+        onlink={async (person, fact, other, on) => {
+          await api(lib(`/people/${encodeURIComponent(person)}/with/${encodeURIComponent(fact)}/${encodeURIComponent(other)}`), {
+            token,
+            method: "PUT",
+            body: { on },
+          });
+          const id = `~with:${person}:${fact}:${other}`;
+          if (on) putLabel(bag, id, "on");
+          else dropLabel(bag, id);
           show(false);
         }}
         ontoggle={async (person, fact, on) => {

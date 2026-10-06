@@ -34,6 +34,7 @@ A JSON body can be an argument, `-`, or stdin. Non-2xx exits 1.
 - `get|post /people`, `delete /people/{id}`
 - `get|post /personal-facts`, `delete /personal-facts/{id}`
 - `put /people/{person}/toggles/{fact}`
+- `put /people/{person}/with/{fact}/{other}` with `{"on":true|false}` when the personal fact claim contains `{other}`
 - `get /comments?target_type=fact&target_id={id}`, `post /comments`
 - `put|delete /comments/{id}`, `post /comments/{id}/resolved`
 - `get /inbox`
@@ -45,6 +46,7 @@ A reader can look and comment. An editor can change the library. Only the creato
 Read `get /facts`, `get /labels`, and `get /asserts` before writing. Ids are slugs: lowercase, `[a-z0-9_]`, stable. Renaming a title must not change an id.
 
 - **fact**: a cited atom. `role` is `fact`, no formula. Citations are a list of urls or notes. Empty citations are allowed only if the user accepts that.
+- A personal fact whose claim contains `{other}` is a person picker. `{name}` is the person on the page. Each added person makes `fact:<id>__<other id>` true for them. Anyone not added is false, and no separate "does not" fact is stored.
 - **criterion**: title only, `role` `criterion`, no formula, no citations. It is assumed only while an assert puts it on the if-side. It is not assumed false.
 - **theorem**: an if-then warrant. `formula` is required, `role` `theorem`. The claim is the prose. Citations from a fact that was converted live here.
 - **label**: an outcome name, `put /labels` with a JSON object of id to title. The then-side of a theorem is a label or some other atom, never a fresh rename of a fact.

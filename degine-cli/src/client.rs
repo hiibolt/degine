@@ -58,6 +58,12 @@ impl Client {
             .read_to_string()
             .map_err(|err| CallError::Transport(err.to_string()))?;
         if (200..300).contains(&code) {
+            let sniff = text.trim_start();
+            if sniff.starts_with('<') {
+                return Err(CallError::Transport(
+                    "api returned html. the server is the site, not the library".into(),
+                ));
+            }
             Ok(text)
         } else {
             Err(CallError::Status { code, body: text })
