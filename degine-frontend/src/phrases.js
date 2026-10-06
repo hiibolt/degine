@@ -89,7 +89,12 @@ export function readClaim(formula) {
   const ids = (text) =>
     text
       .split(",")
-      .map((part) => part.trim().replace(/^fact:/, ""))
+      .map((part) => {
+        const token = part.trim();
+        const not = token.match(/^not\(fact:([A-Za-z0-9_]+)\)$/);
+        if (not) return `not:${not[1]}`;
+        return token.replace(/^fact:/, "");
+      })
       .filter(Boolean);
   if (or) return { join: "or", partIds: ids(or[1]), thenId };
   if (and) return { join: "and", partIds: ids(and[1]), thenId };

@@ -19,7 +19,7 @@
   }
 </script>
 
-<div class="dag-card" class:gate={data.gate} class:dim={data.dim} style="width:{data.width}px;min-height:{data.height}px">
+<div class="dag-card" class:gate={data.gate} class:dim={data.dim} class:not={data.not} style="width:{data.width}px;min-height:{data.height}px">
   <Handle type="source" position={Position.Top} />
   {#if data.gate}
     <span class="proof-role">{data.kind}</span>
@@ -44,7 +44,10 @@
       {:else}
         <span class="twist quiet-mark" aria-hidden="true"></span>
       {/if}
-      <strong class="dag-title">{data.title}</strong>
+      <strong class="dag-title">
+        {#if data.not}<Icon name="x" />{/if}
+        {data.title}
+      </strong>
     </div>
     {#if data.badge || data.library}
       <div class="dag-meta">

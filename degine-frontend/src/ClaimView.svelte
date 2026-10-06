@@ -1,4 +1,6 @@
 <script>
+  import Icon from "./Icon.svelte";
+
   let { join = "and", parts = [], thenTitle = "", onopen = null } = $props();
 </script>
 
@@ -10,9 +12,15 @@
     {/if}
     {#each parts as part, index (`${index}-${part}`)}
       {#if onopen && part.id}
-        <button class="chip" type="button" onclick={() => onopen(part.id)}>{part.title}</button>
+        <button class="chip" class:not={part.not} type="button" onclick={() => onopen(part.id)}>
+          {#if part.not}<Icon name="x" />{/if}
+          {part.title}
+        </button>
       {:else}
-        <span class="chip">{part.title || part}</span>
+        <span class="chip" class:not={part.not}>
+          {#if part.not}<Icon name="x" />{/if}
+          {part.title || part}
+        </span>
       {/if}
     {/each}
   </div>

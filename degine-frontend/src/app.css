@@ -634,6 +634,27 @@ button.chip {
   border-color: #e4cbb6;
 }
 
+.chip.not {
+  background: #f8e4e0;
+  border-color: #e3b2aa;
+}
+
+.chip.not svg,
+.dag-card.not .dag-title svg {
+  width: 0.72rem;
+  height: 0.72rem;
+  margin-right: 0.28rem;
+  stroke: #9a4036;
+  fill: none;
+  stroke-width: 2;
+  flex: none;
+}
+
+.dag-card.not {
+  background: #f8e4e0;
+  border-color: #e3b2aa;
+}
+
 .cites {
   margin: 0.2rem 0 0;
   padding: 0;

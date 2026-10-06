@@ -1,6 +1,6 @@
 <script>
   import { compileClaim, fillName, readClaim, uniqueSlug } from "./phrases.js";
-  import { outcomeBoard } from "./outcomes.js";
+  import { outcomeBoard, personFacts } from "./outcomes.js";
   import Icon from "./Icon.svelte";
   import ProofDag from "./ProofDag.svelte";
   import ClaimView from "./ClaimView.svelte";
@@ -28,27 +28,33 @@
   const who = $derived(person?.name || "someone");
 
   const scoped = $derived.by(() => {
-    const on = new Set(person?.on || []);
+    if (person) return personFacts(facts, personal, person, people);
     const extra = personal
-      .filter((item) => !person || on.has(item.id))
+      .filter((item) => !String(item.claim || "").includes("{other}"))
       .map((item) => ({
         id: item.id,
         claim: fillName(item.claim, who),
-        role: person ? "fact" : "criterion",
+        role: "criterion",
         formula: null,
       }));
     return [...facts, ...extra];
   });
 
   function nameOf(id) {
+    if (id.startsWith("not:")) return `not ${nameOf(id.slice(4))}`;
     const raw = scoped.find((fact) => fact.id === id && !fact.formula)?.claim || labels[id] || id;
     return fillName(raw, who);
   }
 
-  // A named person only counts a chain that already holds. Open assumptions stay blue on "someone".
-  function shownWays(item) {
-    if (!person) return item.ways;
-    return item.ways.filter((way) => !way.assumes.length);
+  function held(item) {
+    return item.ways.some((way) => !way.assumes.length);
+  }
+
+  // Green when a chain already holds. Blue when a scenario is still open. Red when nothing reaches it.
+  function seal(item) {
+    if (held(item)) return "proved";
+    if (item.ways.length) return "open";
+    return "invalid";
   }
 
   const board = $derived(outcomeBoard(scoped, labels, nameOf));
@@ -72,8 +78,10 @@
   }
 
   function phrase(id) {
-    const fact = facts.find((item) => item.id === id);
-    return { id: fact ? id : "", title: nameOf(id) };
+    const not = id.startsWith("not:");
+    const real = not ? id.slice(4) : id;
+    const fact = facts.find((item) => item.id === real);
+    return { id: fact ? real : "", title: nameOf(real), not };
   }
 
   async function bring(outcome, way) {
@@ -108,7 +116,7 @@
       {#each ordered as item (item.id)}
         <button
           class="pick"
-          class:good={shownWays(item).some((way) => !way.assumes.length)}
+          class:good={held(item)}
           class:selected={current?.id === item.id}
           type="button"
           onclick={() => {
@@ -116,7 +124,7 @@
             openKey = "";
           }}
         >
-          <span class="seal-dot {shownWays(item).some((way) => !way.assumes.length) ? 'proved' : shownWays(item).length ? 'open' : 'invalid'}"></span>
+          <span class="seal-dot {seal(item)}"></span>
           <span>{item.title}</span>
           <span class="peers">
             {#each looking.filter((face) => face.tab === "outcomes" && face.item === item.id) as face (face.user_id)}
@@ -143,10 +151,10 @@
         {/if}
       </div>
       <h2 class="item-title">{current.title}</h2>
-      {#if !shownWays(current).length}
+      {#if !current.ways.length}
         <p class="dek">Nothing reaches this.</p>
       {/if}
-      {#each shownWays(current) as way (way.key)}
+      {#each current.ways as way (way.key)}
         <article class="combo">
           <div class="spread">
             {#if way.assumes.length}

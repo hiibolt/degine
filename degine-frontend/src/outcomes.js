@@ -18,15 +18,25 @@ function leaf(id, role, titleOf) {
   };
 }
 
+function shorter(way, other) {
+  return other.assumes.length < way.assumes.length && other.assumes.every((id) => way.assumes.includes(id));
+}
+
+function prune(ways) {
+  return ways.filter((way) => !ways.some((other) => other !== way && shorter(way, other)));
+}
+
 function product(lists) {
   let rows = [[]];
   for (const list of lists) {
+    const sorted = [...list].sort((a, b) => a.assumes.length - b.assumes.length);
     const next = [];
     for (const row of rows) {
-      for (const item of list) {
+      for (const item of sorted) {
         next.push([...row, item]);
-        if (next.length >= 24) return next;
+        if (next.length >= 80) break;
       }
+      if (next.length >= 80) break;
     }
     rows = next;
   }
@@ -44,7 +54,14 @@ function merge(parts) {
 }
 
 function waysFrom(id, facts, titleOf, stack) {
-  if (stack.has(id) || stack.size > 12) return [];
+  if (id.startsWith("not:")) {
+    const inner = id.slice(4);
+    if (roleOf(facts.find((item) => item.id === inner)) === "fact") return [];
+    const tree = leaf(inner, "criterion", titleOf);
+    tree.not = true;
+    return [{ assumes: [id], givens: [], tree }];
+  }
+  if (stack.has(id) || stack.size > 16) return [];
   const next = new Set(stack);
   next.add(id);
   const fact = facts.find((item) => item.id === id);
@@ -89,7 +106,7 @@ function waysFrom(id, facts, titleOf, stack) {
     }
   }
   if (role === "criterion") found.push({ assumes: [id], givens: [], tree: leaf(id, "criterion", titleOf) });
-  return found;
+  return prune(found);
 }
 
 function keyOf(way) {
@@ -191,16 +208,7 @@ function buildBoard(facts, labels, titleOf) {
         found.push({ ...way, key, shown: way.assumes.length ? way.assumes : way.givens });
         if (found.length >= 48) break;
       }
-      const ways = found
-        .filter(
-          (way) =>
-            !found.some(
-              (other) =>
-                other.assumes.length < way.assumes.length &&
-                other.assumes.every((id) => way.assumes.includes(id)),
-            ),
-        )
-        .slice(0, 24);
+      const ways = prune(found).slice(0, 24);
       return { id, title: titleOf(id), sort: labels[id] || id, ways };
     })
     .sort((a, b) => a.sort.localeCompare(b.sort));

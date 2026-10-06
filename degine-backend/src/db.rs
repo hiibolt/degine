@@ -18,6 +18,8 @@ pub struct Db {
     slots: Arc<Vec<Mutex<Client>>>,
     next: Arc<AtomicUsize>,
     emails: Arc<Mutex<HashMap<String, String>>>,
+    url: String,
+    connector: MakeRustlsConnect,
 }
 
 pub struct GraphRecord {
@@ -57,6 +59,8 @@ impl Db {
             slots: Arc::new(slots),
             next: Arc::new(AtomicUsize::new(0)),
             emails: Arc::new(Mutex::new(HashMap::new())),
+            url: url.to_string(),
+            connector,
         };
         {
             let mut conn = db.lock()?;
@@ -93,11 +97,21 @@ impl Db {
         })
     }
 
+    fn connect(&self) -> Result<Client> {
+        Client::connect(&self.url, self.connector.clone()).context("failed to open the database")
+    }
+
     fn lock(&self) -> Result<MutexGuard<'_, Client>> {
         let index = self.next.fetch_add(1, Ordering::Relaxed) % self.slots.len();
-        self.slots[index]
+        let mut guard = self.slots[index]
             .lock()
-            .map_err(|_| anyhow::anyhow!("database lock poisoned"))
+            .map_err(|_| anyhow::anyhow!("database lock poisoned"))?;
+        // Supabase closes idle connections. A dead slot otherwise fails the next write.
+        let alive = !guard.is_closed() && guard.simple_query("SELECT 1").is_ok();
+        if !alive {
+            *guard = self.connect().context("failed to reopen the database")?;
+        }
+        Ok(guard)
     }
 
     pub fn list_facts(&self, scope: &Scope) -> Result<Vec<Fact>> {
@@ -154,7 +168,7 @@ impl Db {
         let mut tx = conn.transaction()?;
         tx.execute(
             "INSERT INTO facts (workspace_id, id, claim, formula, role, owner_id)
-             VALUES ($1, $2, $3, $4, $5, $6::uuid)",
+             VALUES ($1, $2, $3, $4, $5, $6::text::uuid)",
             &[&ws, &fact.id, &fact.claim, &fact.formula, &fact.role, &user],
         )?;
         write_citations(&mut tx, ws, &fact.id, &fact.citations)?;
@@ -259,7 +273,7 @@ impl Db {
         let mut conn = self.lock()?;
         let mut tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO rules (workspace_id, id, conclusion, owner_id) VALUES ($1, $2, $3, $4::uuid)",
+            "INSERT INTO rules (workspace_id, id, conclusion, owner_id) VALUES ($1, $2, $3, $4::text::uuid)",
             &[&ws, &rule.id, &rule.conclusion, &user],
         )?;
         write_premises(&mut tx, ws, &rule.id, &rule.premises)?;
@@ -344,7 +358,7 @@ impl Db {
 
     fn put_label(conn: &mut Client, ws: &str, user: &str, id: &str, title: &str) -> Result<()> {
         conn.execute(
-            "INSERT INTO labels (workspace_id, id, title, owner_id) VALUES ($1, $2, $3, $4::uuid)
+            "INSERT INTO labels (workspace_id, id, title, owner_id) VALUES ($1, $2, $3, $4::text::uuid)
              ON CONFLICT (workspace_id, id) DO UPDATE SET title = EXCLUDED.title",
             &[&ws, &id, &title, &user],
         )
@@ -646,7 +660,7 @@ impl Db {
         let mut tx = conn.transaction()?;
         tx.execute(
             "INSERT INTO asserts (workspace_id, id, title, description, formula, owner_id)
-             VALUES ($1, $2, $3, $4, $5, $6::uuid)",
+             VALUES ($1, $2, $3, $4, $5, $6::text::uuid)",
             &[
                 &ws,
                 &assert.id,
@@ -1177,7 +1191,7 @@ impl Db {
                 .collect();
             tx.execute(
                 "INSERT INTO facts (workspace_id, id, claim, formula, role, owner_id)
-                 VALUES ($1, $2, $3, NULL, 'fact', $4::uuid)",
+                 VALUES ($1, $2, $3, NULL, 'fact', $4::text::uuid)",
                 &[&ws, &new_id, &new_claim, &user],
             )?;
             tx.execute(
@@ -1185,7 +1199,7 @@ impl Db {
                 &[&ws, &old_id],
             )?;
             tx.execute(
-                "INSERT INTO labels (workspace_id, id, title, owner_id) VALUES ($1, $2, $3, $4::uuid)
+                "INSERT INTO labels (workspace_id, id, title, owner_id) VALUES ($1, $2, $3, $4::text::uuid)
                  ON CONFLICT (workspace_id, id) DO UPDATE SET title = excluded.title",
                 &[&ws, &old_id, &old_claim, &user],
             )?;
@@ -1193,7 +1207,7 @@ impl Db {
             let formula = format!("imp(fact:{new_id}, fact:{old_id})");
             tx.execute(
                 "INSERT INTO facts (workspace_id, id, claim, formula, role, owner_id)
-                 VALUES ($1, $2, $3, $4, 'theorem', $5::uuid)",
+                 VALUES ($1, $2, $3, $4, 'theorem', $5::text::uuid)",
                 &[&ws, &theorem_id, &old_claim, &formula, &user],
             )?;
             write_citations(&mut tx, &ws, &theorem_id, &citations)?;

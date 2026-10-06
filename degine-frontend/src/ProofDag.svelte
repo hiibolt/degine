@@ -75,6 +75,7 @@
         gate: false,
         path,
         title: node.title,
+        not: Boolean(node.not),
         badge: badge(node),
         library: node.library,
         factId: node.library ? node.id : "",

@@ -397,6 +397,7 @@
       formula: assert?.formula || "",
       assumes: [...(assert?.assumes || [])].sort(),
       on: [...(person?.on || [])].sort(),
+      links: [...(person?.links || [])].map((link) => `${link.fact}:${link.other}`).sort(),
       facts: facts.map((fact) => `${fact.id}|${fact.role}|${fact.formula || ""}|${fact.claim}`).sort(),
       personal: personal.map((item) => `${item.id}|${item.claim}`).sort(),
     });
