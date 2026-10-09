@@ -2,6 +2,7 @@
   import dagre from "@dagrejs/dagre";
   import { Background, BackgroundVariant, Controls, MarkerType, SvelteFlow } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
+  import { ancestors, layoutPlan } from "./dagPlan.js";
   import DagNode from "./DagNode.svelte";
   import FlowFit from "./FlowFit.svelte";
   import Icon from "./Icon.svelte";
@@ -19,7 +20,9 @@
     return into;
   }
 
-  let expanded = $state(unfold ? opened(tree, "root", new Set()) : new Set());
+  let expanded = $state(new Set());
+  let homes = new Map();
+  let stamp = "";
   let focus = $state("root");
   let framed = $state("root");
   let nodes = $state.raw([]);
@@ -82,6 +85,7 @@
         canOpen,
         open: open.has(path),
         dim,
+        alias: homes.get(path) || "",
       }),
     );
     if (!open.has(path)) return;
@@ -204,12 +208,25 @@
     return () => document.removeEventListener("fullscreenchange", sync);
   });
 
+  function reveal(path) {
+    const next = new Set(expanded);
+    next.add(path);
+    for (const up of ancestors(path)) next.add(up);
+    focus = path;
+    expanded = next;
+  }
+
   function toggleAll() {
     expanded = wide ? new Set() : opened(tree, "root", new Set());
     focus = "root";
   }
 
   function toggle(path) {
+    const home = homes.get(path);
+    if (home) {
+      reveal(home);
+      return;
+    }
     const next = new Set(expanded);
     if (next.has(path)) {
       for (const key of next) {
@@ -219,6 +236,15 @@
     focus = path;
     expanded = next;
   }
+
+  $effect(() => {
+    const next = layoutPlan(tree);
+    homes = next.homes;
+    if (next.stamp === stamp) return;
+    stamp = next.stamp;
+    expanded = unfold ? next.initial : new Set();
+    focus = "root";
+  });
 
   $effect(() => {
     const open = expanded;

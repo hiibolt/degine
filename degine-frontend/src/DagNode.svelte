@@ -17,9 +17,23 @@
   function keep(event) {
     event.stopPropagation();
   }
+
+  function jump(event) {
+    if (!data.alias) return;
+    event.stopPropagation();
+    data.ontoggle(data.path);
+  }
 </script>
 
-<div class="dag-card" class:gate={data.gate} class:dim={data.dim} class:not={data.not} style="width:{data.width}px;min-height:{data.height}px">
+<div
+  class="dag-card"
+  class:gate={data.gate}
+  class:dim={data.dim}
+  class:alias={Boolean(data.alias)}
+  class:not={data.not}
+  style="width:{data.width}px;min-height:{data.height}px"
+  onclick={jump}
+>
   <Handle type="source" position={Position.Top} />
   {#if data.gate}
     <span class="proof-role">{data.kind}</span>
@@ -36,7 +50,7 @@
           class="twist nodrag nopan"
           type="button"
           aria-expanded={data.open}
-          aria-label={data.open ? "collapse" : "expand"}
+          aria-label={data.alias ? "show the open one" : data.open ? "collapse" : "expand"}
           onclick={toggle}
         >
           {data.open ? "−" : "+"}
