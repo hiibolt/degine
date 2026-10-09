@@ -121,6 +121,57 @@ function keyOf(way) {
   return `${[...way.assumes].sort().join(",")}|${steps.join(">")}`;
 }
 
+function mergeTrees(nodes) {
+  const first = nodes[0];
+  if (nodes.length === 1) return first;
+  const order = [];
+  const groups = new Map();
+  for (const node of nodes) {
+    for (const step of node.steps || []) {
+      let bucket = groups.get(step.theoremId);
+      if (!bucket) {
+        bucket = [];
+        groups.set(step.theoremId, bucket);
+        order.push(step);
+      }
+      bucket.push(step);
+    }
+  }
+  const steps = order.map((sample) => {
+    const bucket = groups.get(sample.theoremId);
+    const width = Math.max(...bucket.map((step) => step.needs.length));
+    const needs = [];
+    for (let index = 0; index < width; index++) {
+      const kids = bucket.map((step) => step.needs[index]).filter(Boolean);
+      needs.push(kids.length === 1 ? kids[0] : mergeTrees(kids));
+    }
+    return { ...sample, needs };
+  });
+  return { ...first, steps };
+}
+
+// Several chains can leave the same criteria. The card only prints those, so show one row
+// and keep every route as another step in that proof.
+function sameCase(ways) {
+  const groups = new Map();
+  for (const way of ways) {
+    const key = [...way.assumes].sort().join(",");
+    const list = groups.get(key);
+    if (list) list.push(way);
+    else groups.set(key, [way]);
+  }
+  return [...groups.values()].map((group) => {
+    const givens = [];
+    for (const way of group) for (const id of way.givens) if (!givens.includes(id)) givens.push(id);
+    const way = {
+      assumes: group[0].assumes,
+      givens,
+      tree: mergeTrees(group.map((item) => item.tree)),
+    };
+    return { ...way, key: keyOf(way), shown: way.assumes.length ? way.assumes : way.givens };
+  });
+}
+
 let cachedKey = "";
 let cachedBoard = [];
 
@@ -205,10 +256,10 @@ function buildBoard(facts, labels, titleOf) {
         const key = keyOf(way);
         if (seen.has(key)) continue;
         seen.add(key);
-        found.push({ ...way, key, shown: way.assumes.length ? way.assumes : way.givens });
+        found.push(way);
         if (found.length >= 48) break;
       }
-      const ways = prune(found).slice(0, 24);
+      const ways = sameCase(prune(found)).slice(0, 24);
       return { id, title: titleOf(id), sort: labels[id] || id, ways };
     })
     .sort((a, b) => a.sort.localeCompare(b.sort));
